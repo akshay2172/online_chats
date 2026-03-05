@@ -1,0 +1,9 @@
+frontend/.next/*
+frontend/node_modules
+backend/node_modules
+backend/dist
+frontend/.env.local
+backend/.env
+backend/uploads
+backend/logs
+

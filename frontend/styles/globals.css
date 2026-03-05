@@ -1,0 +1,352 @@
+@import "tailwindcss";
+
+:root {
+  /* Light mode variables */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-tertiary: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --highlight-color: #fef3c7;
+  --highlight-glow: rgba(251, 191, 36, 0.5);
+  --pinned-bg: #fffbeb;
+  --pinned-border: #fcd34d;
+  --pinned-text: #92400e;
+  --menu-bg: #ffffff;
+  --menu-hover: #f3f4f6;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --online-color: #22c55e;
+  --away-color: #f59e0b;
+  --busy-color: #ef4444;
+  --offline-color: #6b7280;
+  --scrollbar-track: #f1f1f1;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a8a8a8;
+}
+
+.dark {
+  /* Dark mode variables */
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #374151;
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --border-color: #374151;
+  --accent-color: #60a5fa;
+  --accent-hover: #3b82f6;
+  --highlight-color: rgba(59, 130, 246, 0.2);
+  --highlight-glow: rgba(59, 130, 246, 0.6);
+  --pinned-bg: rgba(251, 191, 36, 0.1);
+  --pinned-border: #f59e0b;
+  --pinned-text: #fbbf24;
+  --menu-bg: #1f2937;
+  --menu-hover: #374151;
+  --card-bg: #1f2937;
+  --card-border: #374151;
+  --online-color: #22c55e;
+  --away-color: #f59e0b;
+  --busy-color: #ef4444;
+  --offline-color: #6b7280;
+  --scrollbar-track: #1f2937;
+  --scrollbar-thumb: #4b5563;
+  --scrollbar-thumb-hover: #6b7280;
+}
+
+/* Apply theme variables */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  white-space: normal;
+  overflow-wrap: break-word;
+  color: var(--text-muted);
+}
+
+.reaction-menu {
+  position: absolute;
+  max-width: 240px;
+  right: 0;
+  left: auto;
+  transform: translateY(0);
+  overflow-wrap: break-word;
+}
+
+/* Message text wrapping - preserve line breaks and wrap long words */
+.message-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Smooth scroll behavior */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Custom animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes message-highlight {
+  0% {
+    background-color: var(--highlight-color);
+    box-shadow: 0 0 0 4px var(--highlight-glow);
+  }
+  50% {
+    background-color: var(--highlight-color);
+    box-shadow: 0 0 0 8px var(--highlight-glow);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes message-highlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--highlight-glow);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px var(--highlight-glow);
+  }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-in;
+}
+
+.animate-message-highlight {
+  animation: message-highlight 2s ease-out;
+}
+
+.animate-message-highlight-pulse {
+  animation: message-highlight-pulse 1.5s ease-in-out 2;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions */
+button, a {
+  transition: all 0.2s ease;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse animation for typing indicator */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Typing indicator dots */
+.typing-dot {
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+/* Theme-aware pinned message bar */
+.pinned-bar {
+  background-color: var(--pinned-bg);
+  border-color: var(--pinned-border);
+  color: var(--pinned-text);
+}
+
+.pinned-bar:hover {
+  background-color: var(--pinned-bg);
+  filter: brightness(1.05);
+}
+
+/* Theme-aware cards */
+.theme-card {
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
+  color: var(--text-primary);
+}
+
+/* Theme-aware menu */
+.theme-menu {
+  background-color: var(--menu-bg);
+  border-color: var(--border-color);
+}
+
+.theme-menu-item:hover {
+  background-color: var(--menu-hover);
+}
+
+/* Status indicators */
+.status-online {
+  background-color: var(--online-color);
+}
+
+.status-away {
+  background-color: var(--away-color);
+}
+
+.status-busy {
+  background-color: var(--busy-color);
+}
+
+.status-offline {
+  background-color: var(--offline-color);
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .hide-desktop {
+    display: none !important;
+  }
+}
+
+/* Glass morphism effect for modals */
+.glass-modal {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.dark .glass-modal {
+  background: rgba(17, 24, 39, 0.95);
+}
+
+/* Upload progress bar */
+.upload-progress {
+  background: linear-gradient(90deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+  transition: width 0.3s ease;
+}
+
+/* Mention highlight */
+.mention-highlight {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: var(--accent-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.dark .mention-highlight {
+  background-color: rgba(96, 165, 250, 0.2);
+}
+
+/* Mention highlight for current user's messages (white on blue background) */
+.mention-highlight-me {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* Search result highlight */
+.search-highlight {
+  background-color: var(--highlight-color);
+  box-shadow: 0 0 0 2px var(--highlight-glow);
+}
+
+/* Reply preview styling */
+.reply-preview {
+  border-left: 4px solid var(--accent-color);
+  background-color: var(--bg-secondary);
+}
+
+/* Emoji picker theme override */
+.emoji-picker-dark {
+  --epr-bg-color: var(--bg-secondary) !important;
+  --epr-category-label-bg-color: var(--bg-tertiary) !important;
+  --epr-text-color: var(--text-primary) !important;
+}
