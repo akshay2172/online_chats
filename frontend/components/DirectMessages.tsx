@@ -93,10 +93,11 @@ export default function DirectMessages({
 
   // When activeDMConversation changes from parent (i.e., startDM was called), open it
   useEffect(() => {
-    if (activeDMConversation) {
+    if (activeDMConversation && activeDMConversation._id) {
       setActiveChat(activeDMConversation);
+      onLoadDMMessages(activeDMConversation._id);
     }
-  }, [activeDMConversation]);
+  }, [activeDMConversation?._id]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

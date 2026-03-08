@@ -28,6 +28,9 @@ export class User {
   avatar?: string; // URL or base64
 
   @Prop({ type: String })
+  coverPhoto?: string; // URL or base64
+
+  @Prop({ type: String })
   bio?: string;
 
   @Prop({ type: Number })

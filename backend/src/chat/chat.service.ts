@@ -464,17 +464,16 @@ export class ChatService {
   }
 
   async markRoomAsRead(room: string, username: string): Promise<void> {
-    const messages = await this.messageModel.find({
-      room,
-      sender: { $ne: username },
-      readBy: { $ne: username },
-    });
-
-    for (const message of messages) {
-      const readBy = message.readBy || [];
-      readBy.push(username);
-      await this.messageModel.findByIdAndUpdate(message._id, { readBy });
-    }
+    await this.messageModel.updateMany(
+      {
+        room,
+        sender: { $ne: username },
+        readBy: { $ne: username },
+      },
+      {
+        $addToSet: { readBy: username }
+      }
+    );
   }
 
   // Search Messages
@@ -989,7 +988,7 @@ export class ChatService {
   async getUserFullProfile(username: string): Promise<any> {
     const user = await this.userModel
       .findOne({ username })
-      .select('username displayName email avatar bio age country gender status lastSeen globalRole createdAt blockedUsers')
+      .select('username displayName email avatar coverPhoto bio age country gender status lastSeen globalRole createdAt blockedUsers')
       .lean();
 
     if (!user) return null;
@@ -998,6 +997,7 @@ export class ChatService {
       username: user.username,
       displayName: user.displayName || user.username,
       avatar: user.avatar,
+      coverPhoto: (user as any).coverPhoto,
       bio: user.bio || '',
       age: (user as any).age,
       country: user.country,

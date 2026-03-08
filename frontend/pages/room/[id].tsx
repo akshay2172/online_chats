@@ -73,6 +73,8 @@ export default function Room() {
     const [dmConversations, setDmConversations] = useState<any[]>([]);
     const [activeDMConversation, setActiveDMConversation] = useState<any>(null);
     const [dmMessages, setDmMessages] = useState<any[]>([]);
+
+    const [inviteModalTargetUsername, setInviteModalTargetUsername] = useState<string | null>(null);
     const [dmUnreadTotal, setDmUnreadTotal] = useState(0);
 
     // Friends State
@@ -199,7 +201,7 @@ export default function Room() {
         socket.on('connect', onConnect);
         socket.on('disconnect', onDisconnect);
         socket.on('connect_error', onConnectError);
-        socket.on('reconnect', onReconnect);
+        socket.io.on('reconnect', onReconnect);
 
         if (socket.connected) onConnect();
 
@@ -207,7 +209,7 @@ export default function Room() {
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
             socket.off('connect_error', onConnectError);
-            socket.off('reconnect', onReconnect);
+            socket.io.off('reconnect', onReconnect);
         };
     }, [id, localQuery]);
 
@@ -300,9 +302,6 @@ export default function Room() {
         socket.on('userBanned', ({ username: u, by: b, reason, duration }) => {
             const msg = duration ? `${u} was banned for ${duration} min` : `${u} was banned`;
             addToast(reason ? `${msg} — ${reason}` : msg);
-        });
-        socket.on('passwordRequired', (data: any) => {
-            addToast(`Room "${data.roomName}" requires a password`);
         });
         socket.on('platformBanned', ({ by: b, reason }) => {
             addToast(`You have been platform-banned by ${b}${reason ? ': ' + reason : ''}`);
@@ -409,7 +408,6 @@ export default function Room() {
             socket.off('roomBans');
             socket.off('userUnbanned');
             socket.off('userBanned');
-            socket.off('passwordRequired');
             socket.off('platformBanned');
             socket.off('dmConversationsList');
             socket.off('dmConversationStarted');
@@ -424,7 +422,6 @@ export default function Room() {
         };
     }, [id]);
 
-    // ✅ NEW: Fix Double Leave using useRef securely
     useEffect(() => {
         const handleBeforeUnload = () => {
             if (id && activeUsernameRef.current) {
@@ -432,10 +429,18 @@ export default function Room() {
             }
         };
 
+        const forceOpenSidebar = () => {
+            setIsSidebarOpen(true);
+        };
+
         window.addEventListener('beforeunload', handleBeforeUnload);
+        window.addEventListener('openDMPanel', forceOpenSidebar);
+        window.addEventListener('viewProfileInSidebar', forceOpenSidebar);
 
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('openDMPanel', forceOpenSidebar);
+            window.removeEventListener('viewProfileInSidebar', forceOpenSidebar);
             if (id && activeUsernameRef.current) {
                 socket.emit('leaveRoom', { room: id, username: activeUsernameRef.current });
             }
@@ -531,6 +536,33 @@ export default function Room() {
         socket.emit('removeFriend', { friendUsername });
     }, []);
 
+    const handleBlockUser = useCallback((username: string) => {
+        socket.emit('blockUser', { usernameToBlock: username });
+        addToast(`Blocked ${username}. They will no longer be able to message you.`);
+    }, []);
+
+    const handleUnblockUser = useCallback((username: string) => {
+        socket.emit('unblockUser', { usernameToUnblock: username });
+        addToast(`Unblocked ${username}.`);
+    }, []);
+
+    const handleReportUser = useCallback((username: string) => {
+        socket.emit('reportUser', { usernameToReport: username, reason: 'Inappropriate behavior' });
+        addToast(`Reported ${username} to moderators.`);
+    }, []);
+
+    const handleInviteToRoom = useCallback((targetUsername: string) => {
+        setInviteModalTargetUsername(targetUsername);
+    }, []);
+
+    const confirmInviteToRoom = useCallback((roomId: string) => {
+        if (inviteModalTargetUsername) {
+            socket.emit('inviteUserToRoom', { targetUsername: inviteModalTargetUsername, roomId });
+            addToast(`Invite sent to ${inviteModalTargetUsername}`);
+            setInviteModalTargetUsername(null);
+        }
+    }, [inviteModalTargetUsername]);
+
     const handleMarkDMAsRead = useCallback((conversationId: string) => {
         socket.emit('markDMAsRead', { conversationId });
     }, []);
@@ -564,6 +596,29 @@ export default function Room() {
                 setTimeout(() => {
                     socket.off('avatarUpdated', onAvatarUpdated);
                     reject(new Error('Avatar upload timeout'));
+                }, 10000);
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    }, []);
+
+    const handleCoverUpload = useCallback(async (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const imageData = e.target?.result as string;
+                socket.emit('uploadCoverPhoto', { imageData, filename: file.name });
+
+                const onCoverUpdated = (data: any) => {
+                    socket.off('coverPhotoUpdated', onCoverUpdated);
+                    resolve(data.coverUrl);
+                };
+                socket.on('coverPhotoUpdated', onCoverUpdated);
+
+                setTimeout(() => {
+                    socket.off('coverPhotoUpdated', onCoverUpdated);
+                    reject(new Error('Cover upload timeout'));
                 }, 10000);
             };
             reader.onerror = () => reject(new Error('Failed to read file'));
@@ -615,7 +670,7 @@ export default function Room() {
                 roomCountInfo={roomCountInfo}
                 roomBans={roomBans}
                 onCreateRoom={(data) => socket.emit('createRoom', { ...data, createdBy: activeUsername })}
-                onJoinRoom={(roomId, password?) => socket.emit('joinRoomById', { roomId, username: activeUsername, gender: localQuery?.gender || 'other', country: localQuery?.country || 'Unknown', password })}
+                onJoinRoom={(roomId) => socket.emit('joinRoomById', { roomId, username: activeUsername, gender: localQuery?.gender || 'other', country: localQuery?.country || 'Unknown' })}
                 onLeaveRoom={(roomId) => socket.emit('leaveRoom', { room: roomId, username: activeUsername })}
                 onDeleteRoom={(roomId) => socket.emit('deleteRoom', { roomId, username: activeUsername })}
                 onSwitchRoom={(roomId) => router.push(`/room/${roomId}?username=${activeUsername}&gender=${localQuery?.gender || 'other'}&country=${localQuery?.country || 'Unknown'}`)}
@@ -623,6 +678,7 @@ export default function Room() {
                 onGetRoomBans={(room) => socket.emit('getRoomBans', { room })}
                 onUpdateProfile={(updates) => socket.emit('updateProfile', { username: activeUsername, updates })}
                 onAvatarUpload={handleAvatarUpload}
+                onCoverUpload={handleCoverUpload}
                 pinnedMessages={pinnedMessages}
                 messages={messages}
                 allSiteUsers={users}
@@ -631,6 +687,9 @@ export default function Room() {
                 onSendFriendRequest={handleSendFriendRequest}
                 onRespondFriendRequest={handleRespondFriendRequest}
                 onRemoveFriend={handleRemoveFriend}
+                onBlockUser={handleBlockUser}
+                onReportProfile={handleReportUser}
+                onInviteToRoom={handleInviteToRoom}
             />
 
             <div className="flex gap-4 p-5 h-screen bg-gray-100 dark:bg-gray-900">
@@ -722,6 +781,42 @@ export default function Room() {
 
 
             </div>
+
+            {/* Invite Modal */}
+            {inviteModalTargetUsername && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-[90%] max-w-sm border border-gray-200 dark:border-gray-700">
+                        <h3 className="text-xl font-bold mb-4 dark:text-white pb-3 border-b dark:border-gray-700 border-gray-200">
+                            Invite {inviteModalTargetUsername}
+                        </h3>
+                        <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto mb-4">
+                            {rooms.filter(r => r.type === 'public' || r.members?.includes(activeUsername as string) || r.createdBy === activeUsername).length === 0 ? (
+                                <div className="text-gray-500 dark:text-gray-400 py-4 text-center">No available rooms to invite.</div>
+                            ) : (
+                                rooms.filter(r => r.type === 'public' || r.members?.includes(activeUsername as string) || r.createdBy === activeUsername).map(room => (
+                                    <button
+                                        key={room._id}
+                                        onClick={() => confirmInviteToRoom(room._id)}
+                                        className="text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors bg-gray-50 dark:bg-gray-700/50 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black group border border-gray-100 dark:border-gray-600"
+                                    >
+                                        <div className="flex-1 min-w-0 font-medium">
+                                            {room.name} {room.type === 'private' ? '(Private)' : ''}
+                                        </div>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                        <div className="pt-3 border-t dark:border-gray-700 border-gray-200">
+                            <button
+                                onClick={() => setInviteModalTargetUsername(null)}
+                                className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 font-semibold rounded-lg transition-colors border border-transparent dark:border-gray-600 text-sm"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

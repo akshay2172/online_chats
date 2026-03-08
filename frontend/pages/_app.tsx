@@ -11,8 +11,8 @@ interface DarkModeContextType {
 
 export const DarkModeContext = createContext<DarkModeContextType>({
   darkMode: false,
-  toggleDarkMode: () => {},
-  setDarkMode: () => {},
+  toggleDarkMode: () => { },
+  setDarkMode: () => { },
 });
 
 export const useDarkMode = () => useContext(DarkModeContext);
@@ -35,7 +35,7 @@ export default function App({ Component, pageProps }: AppProps) {
     // Check system preference and saved preference
     const savedMode = localStorage.getItem('darkMode');
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
+
     const isDark = savedMode !== null ? savedMode === 'true' : systemPrefersDark;
     setDarkModeState(isDark);
     applyDarkMode(isDark);
@@ -65,16 +65,18 @@ export default function App({ Component, pageProps }: AppProps) {
       applyDarkMode(isDark);
     };
 
-    window.addEventListener('darkModeChanged', handleDarkModeChange);
-    window.addEventListener('storage', (e) => {
+    const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'darkMode') {
         handleDarkModeChange();
       }
-    });
-    
+    };
+
+    window.addEventListener('darkModeChanged', handleDarkModeChange as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+
     return () => {
-      window.removeEventListener('darkModeChanged', handleDarkModeChange);
-      window.removeEventListener('storage', handleDarkModeChange);
+      window.removeEventListener('darkModeChanged', handleDarkModeChange as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, [applyDarkMode]);
 
@@ -103,7 +105,7 @@ export default function App({ Component, pageProps }: AppProps) {
     );
   }
 
-  
+
   return (
     <DarkModeContext.Provider value={{ darkMode, toggleDarkMode, setDarkMode }}>
       <Component {...pageProps} />

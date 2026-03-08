@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
     User, Calendar, MapPin, Clock, Shield, Users as UsersIcon,
     MessageCircle, Globe, Cake, UserCheck, Activity, Edit, X, Check,
-    Camera, Loader2, UserPlus
+    Camera, Loader2, UserPlus, MoreVertical
 } from 'lucide-react';
 import socket from '../utils/socket';
 
@@ -13,7 +13,12 @@ interface ProfileCardProps {
     onSendFriendRequest?: (username: string) => void;
     onUpdateProfile?: (updates: any) => void;
     onAvatarUpload?: (file: File) => Promise<string>;
+    onCoverUpload?: (file: File) => Promise<string>;
     onClose?: () => void;
+    onBlockUser?: (username: string) => void;
+    onUnblockUser?: (username: string) => void;
+    onInviteToRoom?: (username: string) => void;
+    onReportProfile?: (username: string) => void;
     fallbackData?: Partial<ProfileData>;
 }
 
@@ -21,6 +26,7 @@ interface ProfileData {
     username: string;
     displayName: string;
     avatar?: string;
+    coverPhoto?: string;
     bio: string;
     age?: number;
     country?: string;
@@ -29,10 +35,13 @@ interface ProfileData {
     lastSeen?: string;
     globalRole: string;
     createdAt: string;
+    isFriend?: boolean;
+    isBlocked?: boolean;
 }
 
+
 export default function ProfileCard({
-    username, isOwnProfile, onStartDM, onSendFriendRequest, onUpdateProfile, onAvatarUpload, onClose, fallbackData
+    username, isOwnProfile, onStartDM, onSendFriendRequest, onUpdateProfile, onAvatarUpload, onCoverUpload, onClose, onBlockUser, onUnblockUser, onInviteToRoom, onReportProfile, fallbackData
 }: ProfileCardProps) {
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -45,7 +54,11 @@ export default function ProfileCard({
     const [editAge, setEditAge] = useState<number | ''>('');
     const [isUploading, setIsUploading] = useState(false);
     const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+    const [isUploadingCover, setIsUploadingCover] = useState(false);
+    const [previewCover, setPreviewCover] = useState<string | null>(null);
+    const [showOptionsPopup, setShowOptionsPopup] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const coverInputRef = useRef<HTMLInputElement>(null);
 
     // Fetch profile from backend
     useEffect(() => {
@@ -188,7 +201,32 @@ export default function ProfileCard({
         }
     };
 
+    const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !onCoverUpload) return;
+        if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
+        if (file.size > 5 * 1024 * 1024) { alert('Image must be less than 5MB'); return; }
+
+        const reader = new FileReader();
+        reader.onload = (ev) => setPreviewCover(ev.target?.result as string);
+        reader.readAsDataURL(file);
+
+        setIsUploadingCover(true);
+        try {
+            const coverUrl = await onCoverUpload(file);
+            onUpdateProfile?.({ coverPhoto: coverUrl });
+            setPreviewCover(null);
+            setProfile(prev => prev ? { ...prev, coverPhoto: coverUrl } : prev);
+        } catch {
+            alert('Failed to upload cover photo');
+            setPreviewCover(null);
+        } finally {
+            setIsUploadingCover(false);
+        }
+    };
+
     const avatarSrc = previewAvatar || displayProfile.avatar;
+    const coverSrc = previewCover || displayProfile.coverPhoto;
 
     // ─── RENDER ───────────────────────────────────────────────
     return (
@@ -196,27 +234,39 @@ export default function ProfileCard({
 
             {/* ── Cover Photo (gradient banner) ────────────────── */}
             <div
-                className="relative h-28"
+                className="relative h-28 group"
                 style={{
-                    background: `linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)`
+                    background: coverSrc ? `url(${coverSrc}) center/cover no-repeat` : `linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)`
                 }}
             >
                 {/* Subtle pattern overlay */}
                 <div className="absolute inset-0" style={{
-                    background: 'radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%)'
+                    background: coverSrc ? 'rgba(0,0,0,0.1)' : 'radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%)'
                 }} />
 
-                {/* Edit button on cover */}
-                {isOwnProfile && !isEditing && (
-                    <button
-                        onClick={() => setIsEditing(true)}
-                        className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-all hover:scale-105"
-                        style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
-                    >
-                        <Edit className="w-3.5 h-3.5" />
-                        Edit Profile
-                    </button>
-                )}
+                {/* Cover File Input */}
+                <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverFileChange} className="hidden" />
+
+                {/* Edit button or Cover Upload on cover */}
+                {isOwnProfile && !isEditing ? (
+                    <>
+                        <button
+                            onClick={() => setIsEditing(true)}
+                            className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-all hover:scale-105 z-20"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
+                        >
+                            <Edit className="w-3.5 h-3.5" />
+                            Edit Profile
+                        </button>
+                        <div
+                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+                            onClick={() => { if (isOwnProfile) coverInputRef.current?.click(); }}
+                        >
+                            {isUploadingCover ? <Loader2 className="w-7 h-7 text-white animate-spin" /> : <Camera className="w-7 h-7 text-white" />}
+                        </div>
+                    </>
+                ) : null}
             </div>
 
             {/* ── Avatar (overlapping cover) ────────────────────── */}
@@ -262,7 +312,7 @@ export default function ProfileCard({
             </div>
 
             {/* ── Status + Role Row ──────────────────────────────── */}
-            <div className="flex items-center gap-2 px-5 mt-3 flex-wrap">
+            <div className="flex items-center gap-2 px-5 mt-3 flex-wrap relative">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: sColor + '18', color: sColor }}>
                     <Activity className="w-3 h-3" />
                     <span className="capitalize">{displayProfile.status}</span>
@@ -271,6 +321,51 @@ export default function ProfileCard({
                     <Shield className="w-3 h-3" />
                     {badge.label}
                 </div>
+
+                {/* 3-dots Menu for Other Users */}
+                {!isOwnProfile && displayProfile && (
+                    <div className="ml-auto relative">
+                        <button
+                            onClick={() => setShowOptionsPopup(!showOptionsPopup)}
+                            className="flex items-center justify-center w-8 h-8 rounded-full transition-all hover:opacity-80"
+                            style={{ color: 'var(--text-primary)' }}
+                        >
+                            <MoreVertical className="w-5 h-5" />
+                        </button>
+                        {showOptionsPopup && (
+                            <div className="absolute right-0 mt-2 w-48 rounded-lg shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-2" style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowOptionsPopup(false);
+                                        if (displayProfile.isBlocked) {
+                                            if (onUnblockUser) onUnblockUser(displayProfile.username);
+                                        } else {
+                                            if (onBlockUser) onBlockUser(displayProfile.username);
+                                        }
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80"
+                                    style={{ color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+                                >
+                                    {displayProfile.isBlocked ? 'Unblock User' : 'Block User'}
+                                </button>
+                                <button
+                                    onClick={() => { setShowOptionsPopup(false); if (onInviteToRoom) onInviteToRoom(displayProfile.username); }}
+                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80"
+                                    style={{ color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+                                >
+                                    Invite to Rooms
+                                </button>
+                                <button
+                                    onClick={() => { setShowOptionsPopup(false); if (onReportProfile) onReportProfile(displayProfile.username); }}
+                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80 text-red-500"
+                                    style={{ backgroundColor: 'transparent' }}
+                                >
+                                    Report Profile
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ── Action Buttons (below avatar, Facebook-style) ── */}
@@ -298,7 +393,7 @@ export default function ProfileCard({
                                 Message
                             </button>
                         )}
-                        {onSendFriendRequest && (
+                        {!displayProfile.isFriend && onSendFriendRequest && (
                             <button
                                 onClick={() => onSendFriendRequest(displayProfile.username)}
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90"

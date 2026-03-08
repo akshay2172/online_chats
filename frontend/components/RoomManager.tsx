@@ -32,14 +32,13 @@ interface Room {
   name: string;
   description?: string;
   isPrivate: boolean;
-  type: 'public' | 'unlisted' | 'private' | 'direct';
+  type: 'public' | 'private' | 'direct';
   members: string[];
   moderators: string[];
   owner: string;
   memberCount: number;
   createdAt?: string;
   avatar?: string;
-  password?: string;
 }
 
 interface RoomBan {
@@ -58,8 +57,8 @@ interface Props {
   currentRoom?: string;
   currentUser?: string;
   userRole?: 'owner' | 'admin' | 'moderator' | 'member';
-  onCreateRoom: (roomData: { name: string; description: string; isPrivate: boolean; type: 'public' | 'unlisted' | 'private'; password?: string }) => void;
-  onJoinRoom: (roomId: string, password?: string) => void;
+  onCreateRoom: (roomData: { name: string; description: string; isPrivate: boolean; type: 'public' | 'private' }) => void;
+  onJoinRoom: (roomId: string) => void;
   onLeaveRoom: (roomId: string) => void;
   onDeleteRoom: (roomId: string) => void;
   onUpdateRoom?: (roomId: string, updates: Partial<Room>) => void;
@@ -99,12 +98,8 @@ export default function RoomManager({
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
-  const [roomType, setRoomType] = useState<'public' | 'unlisted' | 'private'>('public');
-  const [roomPassword, setRoomPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [roomType, setRoomType] = useState<'public' | 'private'>('public');
   const [searchQuery, setSearchQuery] = useState('');
-  const [passwordPrompt, setPasswordPrompt] = useState<{ roomId: string; roomName: string } | null>(null);
-  const [joinPassword, setJoinPassword] = useState('');
   const { darkMode } = useDarkMode();
 
   const isLimitReached = roomCountInfo && roomCountInfo.created >= roomCountInfo.limit;
@@ -117,22 +112,12 @@ export default function RoomManager({
       description: roomDescription.trim(),
       isPrivate: roomType === 'private',
       type: roomType,
-      password: roomType === 'private' ? roomPassword : undefined,
     });
     setShowCreate(false);
     setRoomName('');
     setRoomDescription('');
     setIsPrivate(false);
     setRoomType('public');
-    setRoomPassword('');
-  };
-
-  const handlePasswordJoin = () => {
-    if (passwordPrompt && joinPassword.trim()) {
-      onJoinRoom(passwordPrompt.roomId, joinPassword.trim());
-      setPasswordPrompt(null);
-      setJoinPassword('');
-    }
   };
 
   const canManageRoom = (room: Room) => {
@@ -148,21 +133,18 @@ export default function RoomManager({
   );
 
   const publicRooms = filteredRooms.filter(r => r.type === 'public');
-  const unlistedRooms = filteredRooms.filter(r => r.type === 'unlisted');
   const privateRooms = filteredRooms.filter(r => r.type === 'private');
   const myRooms = filteredRooms.filter(r => r.members?.includes(currentUser || ''));
 
   const getRoomTypeIcon = (type: string) => {
     switch (type) {
       case 'private': return <Lock className="w-4 h-4" style={{ opacity: 0.7 }} />;
-      case 'unlisted': return <Link2 className="w-4 h-4" style={{ opacity: 0.7 }} />;
       default: return <Globe className="w-4 h-4" style={{ opacity: 0.7 }} />;
     }
   };
 
   const getRoomTypeBadge = (type: string) => {
     switch (type) {
-      case 'unlisted': return '🔗 Unlisted';
       case 'private': return '🔒 Private';
       default: return null;
     }
@@ -188,7 +170,7 @@ export default function RoomManager({
               backgroundColor: currentRoom === room.id ? 'rgba(255,255,255,0.2)' : 'var(--bg-tertiary)',
               fontSize: '0.65rem'
             }}>
-              {room.type === 'unlisted' ? '🔗' : '🔒'}
+              🔒
             </span>
           )}
         </div>
@@ -197,11 +179,7 @@ export default function RoomManager({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (room.type === 'private' && room.password) {
-                  setPasswordPrompt({ roomId: room.id, roomName: room.name });
-                } else {
-                  onJoinRoom(room.id);
-                }
+                onJoinRoom(room.id);
               }}
               className="px-3 py-1 text-sm rounded-lg transition-colors"
               style={{ backgroundColor: 'var(--accent-color)', color: 'white' }}
@@ -374,88 +352,14 @@ export default function RoomManager({
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
         {renderRoomSection('My Rooms', myRooms)}
         {renderRoomSection('Public Rooms', publicRooms, true)}
-        {renderRoomSection('Unlisted Rooms', unlistedRooms, true)}
         {renderRoomSection('Private Rooms', privateRooms, true)}
 
         {filteredRooms.length === 0 && (
-          <div
-            className="text-center py-8"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <div className="text-4xl mb-2">🏠</div>
-            <p className="text-sm">No rooms found</p>
-            {!isGuest && <p className="text-xs mt-1">Create a new room to get started</p>}
-            {isGuest && <p className="text-xs mt-1">Sign up to create your own rooms</p>}
+          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+            No rooms found matching "{searchQuery}"
           </div>
         )}
       </div>
-
-      {/* Password Prompt Modal */}
-      {passwordPrompt && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          onClick={() => { setPasswordPrompt(null); setJoinPassword(''); }}
-        >
-          <div
-            className="rounded-xl shadow-xl p-6 max-w-sm w-full"
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center space-x-2 mb-4">
-              <Lock className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
-              <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                Room Password Required
-              </h3>
-            </div>
-            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-              Enter the password to join <strong>{passwordPrompt.roomName}</strong>
-            </p>
-            <div className="relative mb-4">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={joinPassword}
-                onChange={(e) => setJoinPassword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handlePasswordJoin()}
-                placeholder="Enter password..."
-                className="w-full p-3 rounded-lg border outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-                style={{
-                  backgroundColor: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-primary)'
-                }}
-                autoFocus
-              />
-              <button
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handlePasswordJoin}
-                disabled={!joinPassword.trim()}
-                className="flex-1 py-2 rounded-lg transition-colors disabled:opacity-50"
-                style={{ backgroundColor: 'var(--accent-color)', color: 'white' }}
-              >
-                Join Room
-              </button>
-              <button
-                onClick={() => { setPasswordPrompt(null); setJoinPassword(''); }}
-                className="flex-1 py-2 rounded-lg transition-colors"
-                style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Create Room Modal */}
       {showCreate && (
@@ -561,14 +465,13 @@ export default function RoomManager({
                 >
                   Room Type
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['public', 'unlisted', 'private'] as const).map((type) => {
-                    const icons = { public: Globe, unlisted: Link2, private: Lock };
-                    const labels = { public: 'Public', unlisted: 'Unlisted', private: 'Private' };
+                <div className="grid grid-cols-2 gap-2">
+                  {(['public', 'private'] as const).map((type) => {
+                    const icons = { public: Globe, private: Lock };
+                    const labels = { public: 'Public', private: 'Private' };
                     const descriptions = {
                       public: 'Anyone can find & join',
-                      unlisted: 'Join via link only',
-                      private: 'Password protected'
+                      private: 'Join via link only'
                     };
                     const Icon = icons[type];
                     return (
@@ -577,7 +480,6 @@ export default function RoomManager({
                         onClick={() => {
                           setRoomType(type);
                           setIsPrivate(type === 'private');
-                          if (type !== 'private') setRoomPassword('');
                         }}
                         className={`p-3 rounded-lg border flex flex-col items-center space-y-1 transition-all ${roomType === type ? 'ring-2 ring-blue-500' : ''}`}
                         style={{
@@ -595,41 +497,7 @@ export default function RoomManager({
                 </div>
               </div>
 
-              {/* Password field for private rooms */}
-              {roomType === 'private' && (
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    Room Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={roomPassword}
-                      onChange={(e) => setRoomPassword(e.target.value)}
-                      placeholder="Set a password (optional for invite-only)"
-                      className="w-full p-3 rounded-lg border outline-none focus:ring-2 focus:ring-blue-500 transition-all pr-10"
-                      style={{
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderColor: 'var(--border-color)',
-                        color: 'var(--text-primary)'
-                      }}
-                    />
-                    <button
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    {roomPassword ? 'Users will need this password to join' : 'Leave empty for invite-only access'}
-                  </p>
-                </div>
-              )}
+
 
               <div className="flex gap-2 pt-2">
                 <button

@@ -46,7 +46,7 @@ export class Message {
   readBy: string[];
 
   @Prop({ type: String })
-  messageType: 'text' | 'file' | 'image' | 'voice';
+  messageType: 'text' | 'file' | 'image' | 'voice' | 'gif' | 'sticker';
 
   @Prop({ type: Object })
   fileData?: {

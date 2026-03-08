@@ -46,15 +46,15 @@ interface SidebarMenuProps {
     roomCountInfo?: { created: number; limit: number };
     roomBans: any[];
     onCreateRoom: (data: any) => void;
-    onJoinRoom: (roomId: string, password?: string) => void;
+    onJoinRoom: (roomId: string) => void;
     onLeaveRoom: (roomId: string) => void;
     onDeleteRoom: (roomId: string) => void;
     onSwitchRoom: (roomId: string) => void;
     onUnbanUser: (room: string, username: string) => void;
     onGetRoomBans: (room: string) => void;
-    // Profile update
     onUpdateProfile?: (updates: any) => void;
     onAvatarUpload?: (file: File) => Promise<string>;
+    onCoverUpload?: (file: File) => Promise<string>;
     // Pinned & media
     pinnedMessages: any[];
     messages: any[];
@@ -63,6 +63,8 @@ interface SidebarMenuProps {
     allSiteUsers?: any[];
     onBlockUser?: (username: string) => void;
     onUnblockUser?: (username: string) => void;
+    onReportProfile?: (username: string) => void;
+    onInviteToRoom?: (username: string) => void;
     // Friends
     friends?: any[];
     friendRequests?: any[];
@@ -103,6 +105,13 @@ export default function SidebarMenu(props: SidebarMenuProps) {
     const [viewingProfileUsername, setViewingProfileUsername] = useState<string>('');
     const [friendsTab, setFriendsTab] = useState<'list' | 'requests'>('list');
     const { darkMode, toggleDarkMode } = useDarkMode();
+
+    const handleStartDM = (username: string) => {
+        if (props.isGuest) return;
+        props.onStartDM(username);
+        setActivePanel('directMessages');
+        window.dispatchEvent(new CustomEvent('openDMPanel'));
+    };
 
     // Listen for viewProfileInSidebar event from UserList / other components
     useEffect(() => {
@@ -170,6 +179,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                         isOwnProfile={true}
                         onUpdateProfile={props.onUpdateProfile}
                         onAvatarUpload={props.onAvatarUpload}
+                        onCoverUpload={props.onCoverUpload}
                         fallbackData={{
                             displayName: props.displayName,
                             avatar: props.avatar,
@@ -189,8 +199,12 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                     <ProfileCard
                         username={viewingProfileUsername}
                         isOwnProfile={viewingProfileUsername === props.username}
-                        onStartDM={!props.isGuest ? props.onStartDM : undefined}
+                        onStartDM={!props.isGuest ? handleStartDM : undefined}
                         onSendFriendRequest={!props.isGuest ? props.onSendFriendRequest : undefined}
+                        onBlockUser={!props.isGuest ? props.onBlockUser : undefined}
+                        onUnblockUser={!props.isGuest ? props.onUnblockUser : undefined}
+                        onReportProfile={!props.isGuest ? props.onReportProfile : undefined}
+                        onInviteToRoom={!props.isGuest ? props.onInviteToRoom : undefined}
                         fallbackData={siteUser ? {
                             displayName: siteUser.displayName || siteUser.name || siteUser.username,
                             avatar: siteUser.avatar,
@@ -216,7 +230,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                     <DirectMessages
                         currentUser={props.username}
                         conversations={props.dmConversations}
-                        onStartDM={props.onStartDM}
+                        onStartDM={handleStartDM}
                         onSendDMMessage={props.onSendDMMessage}
                         onDeleteDM={props.onDeleteDM}
                         onMarkDMAsRead={props.onMarkDMAsRead}
@@ -442,7 +456,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                                     <div className="flex items-center gap-1.5">
                                         {!props.isGuest && props.onStartDM && (
                                             <button
-                                                onClick={() => props.onStartDM(friend.username)}
+                                                onClick={() => handleStartDM(friend.username)}
                                                 className="p-2 rounded-lg transition-colors hover:opacity-80"
                                                 style={{ backgroundColor: 'var(--bg-secondary)' }}
                                                 title="Send Message"

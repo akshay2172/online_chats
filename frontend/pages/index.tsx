@@ -75,7 +75,8 @@ export default function Home() {
         setCountry(data.country || 'Unknown');
         setView('guest'); // Show room selection
       } else {
-        alert('Login failed: ' + (data.message || 'Please try again'));
+        const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+        alert('Login failed: ' + (errorMessage || 'Please try again'));
       }
     } catch (error) {
       alert('Login error. Please check your connection.');
@@ -111,7 +112,8 @@ export default function Home() {
         setView('login');
         setPassword(''); // Clear password
       } else {
-        alert('Signup failed: ' + (data.message || 'Please try again'));
+        const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+        alert('Signup failed: ' + (errorMessage || 'Please try again'));
       }
     } catch (error) {
       alert('Signup error. Please check your connection.');

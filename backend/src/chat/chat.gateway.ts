@@ -143,6 +143,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // --- 🔒 3. Block direct join of Private rooms (invite link only) ---
       if (roomDoc && roomDoc.type === 'private') {
+        if (isGuest) {
+          client.emit('error', { message: 'Guest users can only join public rooms.' });
+          return;
+        }
         const isMember = roomDoc.members?.includes(username);
         const isRoomOwner = roomDoc.createdBy === username;
         const isPlatformMod = !isGuest && await this.chatService.isGlobalModOrAdmin(username);
@@ -891,6 +895,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // Check private room access — invite link only
       if (room.type === 'private') {
+        const isGuest = !client.data.user;
+        if (isGuest) {
+          client.emit('error', { message: 'Guest users can only join public rooms.' });
+          return;
+        }
         const isMember = room.members?.includes(username);
         const isRoomOwner = room.createdBy === username;
         const isPlatformMod = await this.chatService.isGlobalModOrAdmin(username);
@@ -924,6 +933,100 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     } catch (error) {
       SecurityLogger.logError(error, { event: 'joinRoomById', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to join room' });
+    }
+  }
+
+  @SubscribeMessage('blockUser')
+  async handleBlockUser(
+    @MessageBody() data: { usernameToBlock: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const blockerUsername = client.data.user?.username;
+      if (!blockerUsername) {
+        client.emit('error', { message: 'Must be logged in to block users.' });
+        return;
+      }
+      await this.chatService.blockUser(blockerUsername, data.usernameToBlock);
+      client.emit('userBlocked', { username: data.usernameToBlock });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'blockUser', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to block user' });
+    }
+  }
+
+  @SubscribeMessage('unblockUser')
+  async handleUnblockUser(
+    @MessageBody() data: { usernameToUnblock: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const blockerUsername = client.data.user?.username;
+      if (!blockerUsername) {
+        client.emit('error', { message: 'Must be logged in to unblock users.' });
+        return;
+      }
+      await this.chatService.unblockUser(blockerUsername, data.usernameToUnblock);
+      client.emit('userUnblocked', { username: data.usernameToUnblock });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'unblockUser', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to unblock user' });
+    }
+  }
+
+  @SubscribeMessage('reportUser')
+  async handleReportUser(
+    @MessageBody() data: { usernameToReport: string; reason?: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const reporterUsername = client.data.user?.username;
+      if (!reporterUsername) {
+        client.emit('error', { message: 'Must be logged in to report users.' });
+        return;
+      }
+      // Assuming a generic report stored somewhere or just logged for moderators
+      SecurityLogger.logSpamDetected(data.usernameToReport, `Profile reported by ${reporterUsername} - Reason: ${data.reason || 'None'}`);
+      client.emit('userReported', { username: data.usernameToReport });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'reportUser', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to report user' });
+    }
+  }
+
+  @SubscribeMessage('inviteUserToRoom')
+  async handleInviteUserToRoom(
+    @MessageBody() data: { targetUsername: string; roomId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const inviterUsername = client.data.user?.username;
+      if (!inviterUsername) {
+        client.emit('error', { message: 'Must be logged in to invite users.' });
+        return;
+      }
+      const room = await this.chatService.getRoomById(data.roomId);
+      if (!room) {
+        client.emit('error', { message: 'Room not found.' });
+        return;
+      }
+
+      // We need to create an actual invite link
+      // For now, let's just trigger a notification if we have the service
+      // But we need the inviteService to generate a code, which isn't injected directly in gateway yet
+      // As a fallback, emit an event that directly alerts the user or creates a simple notification
+
+      this.server.emit('roomInviteReceived', {
+        targetUsername: data.targetUsername,
+        inviterUsername,
+        roomName: room.name,
+        roomId: room._id.toString()
+      });
+
+      client.emit('userInvited', { username: data.targetUsername, room: room.name });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'inviteUserToRoom', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to invite user.' });
     }
   }
 
@@ -1724,7 +1827,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         client.emit('userProfileError', { message: 'User not found.' });
         return;
       }
-      client.emit('userProfileData', profile);
+
+      const requester = client.data.user?.username;
+      let isFriend = false;
+      let isBlocked = false;
+
+      if (requester && requester !== data.username) {
+        isFriend = await this.chatService.areFriends(requester, data.username);
+        isBlocked = await this.chatService.isUserBlocked(requester, data.username);
+      }
+
+      client.emit('userProfileData', { ...profile, isFriend, isBlocked });
     } catch (error) {
       SecurityLogger.logError(error, { event: 'getUserProfile', user: client.data.user?.username });
       client.emit('userProfileError', { message: 'Failed to load profile.' });
@@ -1764,13 +1877,52 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       await this.chatService.updateUserProfile(username, { avatar: avatarUrl });
 
       client.emit('avatarUpdated', { avatarUrl });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'uploadAvatar', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to upload avatar.' });
+    }
+  }
 
-      // Broadcast avatar update to all rooms the user is in
+  @SubscribeMessage('uploadCoverPhoto')
+  async handleUploadCoverPhoto(
+    @MessageBody() data: { imageData: string; filename: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required.' });
+        return;
+      }
+
+      // Convert base64 to buffer
+      const base64Data = data.imageData.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      const file: Express.Multer.File = {
+        buffer,
+        originalname: data.filename || 'cover.png',
+        mimetype: 'image/png',
+        size: buffer.length,
+      } as Express.Multer.File;
+
+      const coverPath = await this.uploadService.validateAndUploadAvatar(file); // reusing avatar validation for now
+
+      // Build full URL
+      const baseUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const coverUrl = `${baseUrl}${coverPath}`;
+
+      // Update user in DB
+      await this.chatService.updateUserProfile(username, { coverPhoto: coverUrl });
+
+      client.emit('coverPhotoUpdated', { coverUrl });
+
+      // Broadcast cover update to all rooms the user is in
       const rooms = await this.chatService.getRoomsByUser(username);
       rooms.forEach(room => {
         this.server.to(room.name).emit('userProfileUpdated', {
           username,
-          updates: { avatar: avatarUrl },
+          updates: { coverPhoto: coverUrl },
         });
       });
     } catch (error) {

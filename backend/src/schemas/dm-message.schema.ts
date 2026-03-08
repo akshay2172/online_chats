@@ -22,7 +22,7 @@ export class DMMessage {
     message: string;
 
     @Prop({ type: String, default: 'text' })
-    messageType: 'text' | 'image' | 'file' | 'voice' | 'gif';
+    messageType: 'text' | 'image' | 'file' | 'voice' | 'gif' | 'sticker';
 
     @Prop({ type: Object })
     fileData?: {

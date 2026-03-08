@@ -620,12 +620,13 @@ const ChatWindow: React.FC<Props> = ({
                 )}
 
                 <div
-                  ref={(el) => {
+                  ref={(el: HTMLDivElement | null) => {
                     if (el) {
                       messageRefs.current.set(msgId, el);
                     } else {
                       messageRefs.current.delete(msgId);
                     }
+                    return;
                   }}
                   className={`group flex items-start gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isHighlighted ? 'animate-message-highlight animate-message-highlight-pulse' : ''
                     }`}
@@ -639,7 +640,10 @@ const ChatWindow: React.FC<Props> = ({
                 >
                   {/* Avatar */}
                   {!isMe && (
-                    <div className="relative shrink-0">
+                    <div
+                      className="relative shrink-0 cursor-pointer"
+                      onClick={() => window.dispatchEvent(new CustomEvent('viewProfileInSidebar', { detail: msg.sender }))}
+                    >
                       {userAvatar ? (
                         <img
                           src={userAvatar}

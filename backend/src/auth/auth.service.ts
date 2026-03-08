@@ -1,5 +1,5 @@
 // backend/auth/auth.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
@@ -21,12 +21,14 @@ export class AuthService {
   ) { }
 
   async signup(userData: any) {
-    const existingUser = await this.userModel.findOne({
-      $or: [{ email: userData.email }, { username: userData.username }]
-    });
+    const existingUsername = await this.userModel.findOne({ username: userData.username });
+    if (existingUsername) {
+      throw new BadRequestException('Username already exists. Please choose a different one.');
+    }
 
-    if (existingUser) {
-      throw new Error('User already exists');
+    const existingEmail = await this.userModel.findOne({ email: userData.email });
+    if (existingEmail) {
+      throw new BadRequestException('Email is already registered.');
     }
 
     const hashedPassword = await this.hashPassword(userData.password);
@@ -46,18 +48,18 @@ export class AuthService {
     const user = await this.userModel.findOne({ email });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException('User not found');
     }
 
     const isValid = await this.verifyPassword(password, user.password);
     if (!isValid) {
-      throw new Error('Invalid password');
+      throw new UnauthorizedException('Invalid password');
     }
 
     // 🚫 Block globally banned users — Owner is always exempt
     const isOwner = !!process.env.OWNER_ID && user.username === process.env.OWNER_ID;
     if (!isOwner && user.isPlatformBanned) {
-      throw new Error('Your account has been permanently banned from this platform.');
+      throw new ForbiddenException('Your account has been permanently banned from this platform.');
     }
 
     const accessToken = this.generateAccessToken(user._id.toString(), user.username, isOwner);
@@ -120,7 +122,7 @@ export class AuthService {
     try {
       return jwt.verify(token, this.JWT_SECRET);
     } catch (error) {
-      throw new Error('Invalid token');
+      throw new UnauthorizedException('Invalid token');
     }
   }
 
@@ -143,19 +145,19 @@ export class AuthService {
       const decoded = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as any;
 
       if (decoded.type !== 'refresh') {
-        throw new Error('Invalid token type');
+        throw new UnauthorizedException('Invalid token type');
       }
 
       const userId = decoded.userId;
 
       // Verify token exists in store
       if (this.refreshTokens.get(userId) !== refreshToken) {
-        throw new Error('Refresh token revoked or invalid');
+        throw new UnauthorizedException('Refresh token revoked or invalid');
       }
 
       const user = await this.userModel.findById(userId);
       if (!user) {
-        throw new Error('User not found');
+        throw new NotFoundException('User not found');
       }
 
       // Generate new access token
@@ -167,7 +169,10 @@ export class AuthService {
         email: user.email,
       };
     } catch (error) {
-      throw new Error('Invalid refresh token');
+      if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid refresh token');
     }
   }
 

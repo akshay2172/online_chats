@@ -55,6 +55,7 @@ const MessageInput: React.FC<Props> = ({
   const [mentionSearch, setMentionSearch] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingCancelled, setIsRecordingCancelled] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [gifSearch, setGifSearch] = useState('');
   const [gifs, setGifs] = useState<any[]>([]);
@@ -305,14 +306,18 @@ const MessageInput: React.FC<Props> = ({
 
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        if (onVoiceRecord) {
+        // Check local ref or state equivalent to see if it was cancelled
+        if (onVoiceRecord && !(mediaRecorderRef.current as any)?.cancelled) {
           onVoiceRecord(audioBlob);
         }
         stream.getTracks().forEach(track => track.stop());
       };
 
+      // Store a custom property to track cancellation
+      (mediaRecorder as any).cancelled = false;
       mediaRecorder.start();
       setIsRecording(true);
+      setIsRecordingCancelled(false);
       setRecordingTime(0);
 
       recordingTimerRef.current = setInterval(() => {
@@ -336,8 +341,12 @@ const MessageInput: React.FC<Props> = ({
 
   const cancelRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      (mediaRecorderRef.current as any).cancelled = true;
+      setIsRecordingCancelled(true);
+
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+
       setIsRecording(false);
       setRecordingTime(0);
       if (recordingTimerRef.current) {

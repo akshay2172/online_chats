@@ -58,6 +58,7 @@ import { extname } from 'path';
           'audio/mpeg',
           'audio/wav',
           'audio/ogg',
+          'audio/webm',
         ];
 
         if (allowedMimes.includes(file.mimetype)) {
