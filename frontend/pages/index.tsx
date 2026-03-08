@@ -63,6 +63,7 @@ export default function Home() {
 
       if (response.ok) {
         localStorage.setItem('accessToken', data.accessToken);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('username', data.username);
         localStorage.setItem('gender', data.gender || 'other');
         localStorage.setItem('country', data.country || 'Unknown');
@@ -139,6 +140,17 @@ export default function Home() {
   };
 
   const handleGuestLogin = () => {
+    // Clear any previous registered user session data so guest doesn't inherit identity
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('username');
+    localStorage.removeItem('gender');
+    localStorage.removeItem('country');
+    localStorage.removeItem('avatar');
+    localStorage.removeItem('bio');
+    localStorage.removeItem('displayName');
+    localStorage.removeItem('status');
+    localStorage.removeItem('age');
 
     setUsername('');
     setGender('other');

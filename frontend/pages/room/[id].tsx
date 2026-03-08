@@ -310,8 +310,26 @@ export default function Room() {
         socket.on('authDowngraded', async (data: any) => {
             console.warn('Auth downgraded:', data.reason);
             const refreshed = await handleAuthExpiry();
-            if (!refreshed) {
+            if (refreshed) {
+                // Token was refreshed successfully - socket reconnected with new token
+                // Re-join the room with the authenticated identity
+                hasJoinedRef.current = false;
+                const savedUsername = localStorage.getItem('username');
+                if (savedUsername && id) {
+                    socket.emit('joinRoom', {
+                        room: id,
+                        username: savedUsername,
+                        gender: localStorage.getItem('gender') || 'other',
+                        country: localStorage.getItem('country') || 'Unknown',
+                        avatar: localStorage.getItem('avatar') || undefined,
+                    });
+                    hasJoinedRef.current = true;
+                    socket.emit('getDMConversations');
+                }
+            } else {
+                // Refresh failed - clear all auth data and mark as guest
                 localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
                 setIsGuest(true);
                 addToast(data.message || 'Your session has expired. Please log in again.');
             }
