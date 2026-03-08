@@ -16,7 +16,7 @@ const socket: Socket = io(SOCKET_URL, {
 export const connectSocket = () => {
   // ✅ FIX: Use consistent token key
   const token = localStorage.getItem('accessToken');
-  
+
   // ✅ FIX: Allow guest connections without token
   if (token) {
     socket.auth = { token };
@@ -26,7 +26,7 @@ export const connectSocket = () => {
     // Clear any previous auth
     socket.auth = {};
   }
-  
+
   socket.connect();
   return true;
 };
@@ -49,6 +49,33 @@ export const setSocketToken = (token: string) => {
   if (!socket.connected) {
     socket.connect();
   }
+};
+
+export const handleAuthExpiry = async () => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem('accessToken', data.accessToken);
+      // Reconnect with new token
+      socket.disconnect();
+      socket.auth = { token: data.accessToken };
+      socket.connect();
+      return true;
+    }
+  } catch (err) {
+    console.error('Token refresh failed:', err);
+  }
+
+  return false;
 };
 
 export default socket;

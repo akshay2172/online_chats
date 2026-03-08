@@ -74,27 +74,25 @@ export const socketAuthMiddleware = (socket: AuthenticatedSocket, next: Function
 
 
 // Rate limiting middleware
+const rateLimits: Map<string, number[]> = new Map();
+const WINDOW_MS = 60000; // 1 minute
+const MAX_CONNECTIONS = 5; // 5 connections per minute per IP
+
 export const socketRateLimitMiddleware = (socket: Socket, next: Function) => {
-    const rateLimits: Map<string, number[]> = new Map();
-    const WINDOW_MS = 60000; // 1 minute
-    const MAX_CONNECTIONS = 5; // 5 connections per minute per IP
+    const ip = socket.handshake.address;
+    const now = Date.now();
 
-    return (socket: Socket, next: Function) => {
-        const ip = socket.handshake.address;
-        const now = Date.now();
+    const userAttempts = rateLimits.get(ip) || [];
+    const recentAttempts = userAttempts.filter(time => now - time < WINDOW_MS);
 
-        const userAttempts = rateLimits.get(ip) || [];
-        const recentAttempts = userAttempts.filter(time => now - time < WINDOW_MS);
+    if (recentAttempts.length >= MAX_CONNECTIONS) {
+        return next(new Error('Rate limit: Too many connection attempts'));
+    }
 
-        if (recentAttempts.length >= MAX_CONNECTIONS) {
-            return next(new Error('Rate limit: Too many connection attempts'));
-        }
+    recentAttempts.push(now);
+    rateLimits.set(ip, recentAttempts);
 
-        recentAttempts.push(now);
-        rateLimits.set(ip, recentAttempts);
-
-        next();
-    };
+    next();
 };
 
 // IP ban middleware

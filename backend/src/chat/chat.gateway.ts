@@ -11,7 +11,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
-import { socketAuthMiddleware, IPBanList, AuthenticatedSocket } from '../../middleware/socket-auth.middleware';
+import { socketAuthMiddleware, socketRateLimitMiddleware, IPBanList, AuthenticatedSocket } from '../../middleware/socket-auth.middleware';
 import { InputSanitizer, ContentModerator } from '../utils/input-sanitizer';
 import { SecurityLogger } from '../utils/security-logger';
 import { NotificationService } from '../notification/notification.service';
@@ -29,6 +29,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   afterInit(server: Server) {
     // Apply authentication middleware
     server.use(socketAuthMiddleware);
+
+    // Apply Rate Limiting middleware
+    server.use(socketRateLimitMiddleware);
 
     // Apply IP ban middleware
     server.use((socket: Socket, next) => IPBanList.middleware(socket, next));
@@ -73,6 +76,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
     } else {
       console.log(`👤 Guest connected: (${client.id}) from ${ip} - chat.gateway.ts:56`);
+
+      // ✅ FIX: Notify client if their token was invalid/expired
+      if (client.data.authError) {
+        client.emit('authDowngraded', {
+          reason: client.data.authError,
+          message: client.data.authError === 'Token expired'
+            ? 'Your session has expired. Please log in again.'
+            : 'Authentication failed. Please log in again.',
+        });
+      }
     }
   }
 
@@ -464,6 +477,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required to edit messages.' });
+        return;
+      }
+      // Fetch the original message and verify ownership  
+      const original = await this.chatService.getMessageById(data.messageId);
+      if (!original || original.sender !== username) {
+        client.emit('error', { message: 'You can only edit your own messages.' });
+        return;
+      }
+
       // Sanitize edited message
       const sanitizedMessage = InputSanitizer.sanitizeMessage(data.newMessage);
 
@@ -539,25 +564,31 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       room: string;
       messageId: string;
       emoji: string;
-      username: string;
+      username: string; // Deprecated: keep for compatibility but do not trust
       action: 'add' | 'remove';
     },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const authUsername = client.data.user?.username;
+      if (!authUsername) {
+        client.emit('error', { message: 'Authentication required to react to messages.' });
+        return;
+      }
+
       let updatedMessage;
 
       if (data.action === 'add') {
         updatedMessage = await this.chatService.addReaction(
           data.messageId,
           data.emoji,
-          data.username,
+          authUsername,
         );
       } else {
         updatedMessage = await this.chatService.removeReaction(
           data.messageId,
           data.emoji,
-          data.username,
+          authUsername,
         );
       }
 
@@ -577,15 +608,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   async handleMarkAsRead(
     @MessageBody() data: {
       messageId: string;
-      username: string;
+      username: string; // Deprecated
       room: string;
     },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const authUsername = client.data.user?.username;
+      if (!authUsername) return; // Silent fail if not authenticated
+
       const updatedMessage = await this.chatService.markAsRead(
         data.messageId,
-        data.username,
+        authUsername,
       );
 
       if (updatedMessage) {
@@ -604,15 +638,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   async handleMarkRoomAsRead(
     @MessageBody() data: {
       room: string;
-      username: string;
+      username: string; // Deprecated
     },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      await this.chatService.markRoomAsRead(data.room, data.username);
+      const authUsername = client.data.user?.username;
+      if (!authUsername) return; // Silent fail if not authenticated
+
+      await this.chatService.markRoomAsRead(data.room, authUsername);
 
       this.server.to(data.room).emit('roomMarkedAsRead', {
-        username: data.username,
+        username: authUsername,
       });
     } catch (error) {
       SecurityLogger.logError(error, { event: 'markRoomAsRead', user: client.data.user?.username });
@@ -664,6 +701,27 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required to pin messages.' });
+        return;
+      }
+
+      const roomDoc = await this.chatService.getRoomByName(data.room);
+      if (!roomDoc) {
+        client.emit('error', { message: 'Room not found.' });
+        return;
+      }
+
+      const isGlobalMod = await this.chatService.isGlobalModOrAdmin(username);
+      const isRoomOwner = roomDoc.createdBy === username;
+      const isRoomMod = roomDoc.moderators?.includes(username);
+
+      if (!isRoomOwner && !isRoomMod && !isGlobalMod) {
+        client.emit('error', { message: 'You do not have permission to pin messages.' });
+        return;
+      }
+
       const pinnedMessage = await this.chatService.pinMessage(data.messageId);
 
       if (pinnedMessage) {
@@ -684,6 +742,27 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required to unpin messages.' });
+        return;
+      }
+
+      const roomDoc = await this.chatService.getRoomByName(data.room);
+      if (!roomDoc) {
+        client.emit('error', { message: 'Room not found.' });
+        return;
+      }
+
+      const isGlobalMod = await this.chatService.isGlobalModOrAdmin(username);
+      const isRoomOwner = roomDoc.createdBy === username;
+      const isRoomMod = roomDoc.moderators?.includes(username);
+
+      if (!isRoomOwner && !isRoomMod && !isGlobalMod) {
+        client.emit('error', { message: 'You do not have permission to unpin messages.' });
+        return;
+      }
+
       const unpinnedMessage = await this.chatService.unpinMessage(data.messageId);
 
       if (unpinnedMessage) {
@@ -745,12 +824,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @MessageBody() data: {
       room: string;
       messageId: string;
-      reportedBy: string;
+      reportedBy: string; // Deprecated
       reason?: string;
     },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const authUsername = client.data.user?.username;
+      if (!authUsername) {
+        client.emit('error', { message: 'Authentication required to report messages.' });
+        return;
+      }
+
       await this.chatService.updateMessage(data.messageId, {
         isReported: true,
       });
@@ -758,7 +843,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Notify moderators
       this.server.to(data.room).emit('messageReported', {
         messageId: data.messageId,
-        reportedBy: data.reportedBy,
+        reportedBy: authUsername,
         reason: data.reason,
       });
 
@@ -789,17 +874,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
+      const authUsername = client.data.user?.username;
+
+      if (!authUsername || authUsername !== data.username) {
+        client.emit('error', { message: 'Unauthorized to update this profile.' });
+        return;
+      }
+
       const updatedUser = await this.chatService.updateUserProfile(
-        data.username,
+        authUsername,
         data.updates,
       );
 
       if (updatedUser) {
         // Broadcast profile update to all rooms where user is a member
-        const rooms = await this.chatService.getRoomsByUser(data.username);
+        const rooms = await this.chatService.getRoomsByUser(authUsername);
         rooms.forEach(room => {
           this.server.to(room.name).emit('userProfileUpdated', {
-            username: data.username,
+            username: authUsername,
             updates: data.updates,
           });
         });
@@ -1023,6 +1115,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         roomId: room._id.toString()
       });
 
+      await this.notificationService.createRoomInviteNotification(
+        data.targetUsername,
+        inviterUsername,
+        room.name,
+        room._id.toString()
+      );
+
       client.emit('userInvited', { username: data.targetUsername, room: room.name });
     } catch (error) {
       SecurityLogger.logError(error, { event: 'inviteUserToRoom', user: client.data.user?.username });
@@ -1040,6 +1139,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   ) {
     try {
       const room = await this.chatService.getRoomById(data.roomId);
+      if (!room) {
+        client.emit('error', { message: 'Room not found.' });
+        return;
+      }
+
       const requestUser = client.data.user?.username;
       if (!requestUser) {
         client.emit('error', { message: 'Authentication required to delete a room.' });
@@ -1048,7 +1152,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // 👑 Owner can delete ANY room regardless of ownership
       const isOwner = this.chatService.isOwner(requestUser);
-      if (!isOwner && (!room || room.createdBy !== requestUser)) {
+      if (!isOwner && room.createdBy !== requestUser) {
         client.emit('error', { message: 'Only the room owner can delete the room.' });
         return;
       }
@@ -1353,6 +1457,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       await this.chatService.unbanUserFromRoom(room, username);
 
+      await this.notificationService.createUnbannedNotification(
+        username,
+        room,
+        moderator
+      );
+
       this.server.to(room).emit('userUnbanned', { username, by: moderator });
       client.emit('unbanSuccess', { username, room });
     } catch (error) {
@@ -1453,6 +1563,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         }
       }
 
+      await this.notificationService.createPlatformBannedNotification(
+        targetUsername,
+        moderator,
+        data.reason
+      );
+
       client.emit('platformBanSuccess', { username: targetUsername });
       SecurityLogger.logUserBanned(moderator, targetUsername, 'PLATFORM', data.reason);
     } catch (error) {
@@ -1508,6 +1624,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       await this.chatService.promoteUser(data.room, data.username, data.role);
 
+      if (data.role === 'moderator') {
+        await this.notificationService.createPromotedNotification(
+          data.username,
+          moderator,
+          data.room,
+          data.role
+        );
+      }
+
       this.server.to(data.room).emit('userPromoted', {
         username: data.username,
         role: data.role,
@@ -1536,9 +1661,6 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.leave(room);
       this.chatService.removeUserFromRoom(room, username);
 
-      // Update user status
-      await this.chatService.updateUserStatus(username, 'offline');
-
       this.server.to(room).emit('userEvent', {
         type: 'leave',
         username: username,
@@ -1558,28 +1680,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     const username = client.data.user?.username;
     if (username) {
       this.chatService.unregisterUserSocket(username, client.id);
+
+      // If no other tabs/devices are connected for this user, mark as offline
+      if (this.chatService.getUserSocketIds(username).length === 0) {
+        await this.chatService.updateUserStatus(username, 'offline');
+      }
     }
 
-    const result = this.chatService.getUserBySocket(client.id);
+    const results = this.chatService.getRoomsBySocket(client.id);
 
-    if (!result) return;
+    for (const { room, user } of results) {
+      this.chatService.removeUserFromRoom(room, user.name);
 
-    const { room, user } = result;
+      this.server.to(room).emit('userEvent', {
+        type: 'leave',
+        username: user.name,
+      });
 
-    this.chatService.removeUserFromRoom(room, user.name);
-
-    // Update user status to offline
-    await this.chatService.updateUserStatus(user.name, 'offline');
-
-    this.server.to(room).emit('userEvent', {
-      type: 'leave',
-      username: user.name,
-    });
-
-    this.server.to(room).emit(
-      'updateUsers',
-      await this.chatService.getUsersInRoomWithRoles(room),
-    );
+      this.server.to(room).emit(
+        'updateUsers',
+        await this.chatService.getUsersInRoomWithRoles(room),
+      );
+    }
   }
 
   // ==================== DM SYSTEM ====================
@@ -1627,8 +1749,21 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Load recent messages
       const messages = await this.chatService.getDMMessages(conversation._id.toString(), 50);
 
+      // ✅ FIX: Enrich conversation with otherUser data (matches getDMConversations format)
+      const enrichedConversation = {
+        ...conversation.toObject(),
+        otherUser: {
+          username: targetUser.username,
+          avatar: targetUser.avatar,
+          status: targetUser.status || 'offline',
+          displayName: targetUser.displayName,
+          bio: targetUser.bio,
+        },
+        unreadCount: 0, // Starting a DM, unread is 0 for the initiator
+      };
+
       client.emit('dmConversationStarted', {
-        conversation,
+        conversation: enrichedConversation,
         messages: messages.reverse(),
       });
     } catch (error) {
@@ -1727,6 +1862,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
           lastMessageAt: new Date(),
         });
       }
+
+      // Add DM notification
+      await this.notificationService.createDMReceivedNotification(
+        data.receiver,
+        username,
+        data.conversationId
+      );
     } catch (error) {
       SecurityLogger.logError(error, { event: 'sendDMMessage', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to send DM.' });
@@ -1974,6 +2116,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         client.emit('friendsList', await this.chatService.getFriends(username));
       } else {
         client.emit('friendRequestSent', { to: data.targetUsername });
+
+        await this.notificationService.createFriendRequestNotification(
+          data.targetUsername,
+          username
+        );
+
         // Notify target about the request
         const targetSocketIds = this.chatService.getUserSocketIds(data.targetUsername);
         if (targetSocketIds.length > 0) {
@@ -2011,6 +2159,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.emit('friendsList', await this.chatService.getFriends(username));
 
       if (data.action === 'accept') {
+        await this.notificationService.createFriendAcceptedNotification(
+          request.from,
+          username
+        );
+
         const senderSocketIds = this.chatService.getUserSocketIds(request.from);
         if (senderSocketIds.length > 0) {
           const senderFriends = await this.chatService.getFriends(request.from);

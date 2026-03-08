@@ -16,7 +16,11 @@ export type NotificationType =
   | 'unbanned'          // User was unbanned from a room
   | 'muted'             // User was muted in a room
   | 'promoted'          // User was promoted to moderator
-  | 'system_error';     // System error notification
+  | 'system_error'      // System error notification
+  | 'friend_request'    // Received a friend request
+  | 'friend_accepted'   // Friend request was accepted
+  | 'dm_received'       // Received a direct message
+  | 'platform_banned';  // Banned from the entire platform
 
 @Schema({ timestamps: true })
 export class Notification {

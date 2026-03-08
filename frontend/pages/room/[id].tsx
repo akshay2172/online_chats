@@ -1,7 +1,7 @@
 // frontend/pages/room/[id].tsx
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
-import socket, { connectSocket } from '../../utils/socket';
+import socket, { connectSocket, handleAuthExpiry } from '../../utils/socket';
 import ChatWindow from '../../components/ChatWindow';
 import MessageInput from '../../components/MessageInput';
 import UserList from '../../components/UserList';
@@ -307,6 +307,16 @@ export default function Room() {
             addToast(`You have been platform-banned by ${b}${reason ? ': ' + reason : ''}`);
         });
 
+        socket.on('authDowngraded', async (data: any) => {
+            console.warn('Auth downgraded:', data.reason);
+            const refreshed = await handleAuthExpiry();
+            if (!refreshed) {
+                localStorage.removeItem('accessToken');
+                setIsGuest(true);
+                addToast(data.message || 'Your session has expired. Please log in again.');
+            }
+        });
+
         // DM events
         socket.on('dmConversationsList', (convos: any[]) => {
             setDmConversations(convos);
@@ -398,6 +408,7 @@ export default function Room() {
             socket.off('messageReported');
             socket.off('messageDeleted');
             socket.off('messageReaction');
+            socket.off('authDowngraded');
             socket.off('messageRead');
             socket.off('roomMarkedAsRead');
             socket.off('messageUnpinned');
@@ -485,7 +496,7 @@ export default function Room() {
     }, [id, activeUsername]);
 
     const handleSendGif = useCallback((gifUrl: string, gifData: any) => {
-        socket.emit('sendMessage', { room: id, message: gifUrl, username: activeUsername, replyTo: replyingTo ? String(replyingTo._id || replyingTo.id) : null, messageType: 'gif', gifData });
+        socket.emit('sendGif', { room: id, gifUrl, username: activeUsername, replyTo: replyingTo ? String(replyingTo._id || replyingTo.id) : null, gifData });
         setReplyingTo(null);
     }, [id, activeUsername, replyingTo]);
 
