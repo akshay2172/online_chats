@@ -63,10 +63,10 @@ export class NotificationService {
     }
 
     // Mark notification as read
-    async markAsRead(notificationId: string): Promise<NotificationDocument | null> {
+    async markAsRead(notificationId: string, username: string): Promise<NotificationDocument | null> {
         return await this.notificationModel
-            .findByIdAndUpdate(
-                notificationId,
+            .findOneAndUpdate(
+                { _id: notificationId, recipientUsername: username },
                 { isRead: true, readAt: new Date() },
                 { new: true }
             )
@@ -82,9 +82,12 @@ export class NotificationService {
     }
 
     // Delete notification
-    async deleteNotification(notificationId: string): Promise<void> {
+    async deleteNotification(notificationId: string, username: string): Promise<void> {
         await this.notificationModel
-            .findByIdAndUpdate(notificationId, { isDeleted: true })
+            .findOneAndUpdate(
+                { _id: notificationId, recipientUsername: username },
+                { isDeleted: true }
+            )
             .exec();
     }
 
@@ -213,6 +216,85 @@ export class NotificationService {
             title: 'System Error',
             message: errorMessage,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+    }
+
+    // Helper: Create unbanned notification
+    async createUnbannedNotification(
+        recipientUsername: string,
+        room: string,
+        unbannedBy: string
+    ): Promise<NotificationDocument> {
+        return this.createNotification({
+            recipientUsername,
+            type: 'unbanned',
+            title: 'You were unbanned',
+            message: `You were unbanned from ${room} by ${unbannedBy}`,
+            data: { room, unbannedBy },
+            actionUrl: `/room/${room}`,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+    }
+
+    // Helper: Create friend request notification
+    async createFriendRequestNotification(
+        recipientUsername: string,
+        fromUsername: string
+    ): Promise<NotificationDocument> {
+        return this.createNotification({
+            recipientUsername,
+            type: 'friend_request',
+            title: 'New Friend Request',
+            message: `${fromUsername} sent you a friend request`,
+            data: { fromUsername },
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+    }
+
+    // Helper: Create friend accepted notification
+    async createFriendAcceptedNotification(
+        recipientUsername: string,
+        fromUsername: string
+    ): Promise<NotificationDocument> {
+        return this.createNotification({
+            recipientUsername,
+            type: 'friend_accepted',
+            title: 'Friend Request Accepted',
+            message: `${fromUsername} accepted your friend request`,
+            data: { fromUsername },
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+    }
+
+    // Helper: Create DM received notification
+    async createDMReceivedNotification(
+        recipientUsername: string,
+        fromUsername: string,
+        conversationId: string
+    ): Promise<NotificationDocument> {
+        return this.createNotification({
+            recipientUsername,
+            type: 'dm_received',
+            title: 'New Direct Message',
+            message: `You received a new message from ${fromUsername}`,
+            data: { fromUsername, conversationId },
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+    }
+
+    // Helper: Create platform banned notification
+    async createPlatformBannedNotification(
+        recipientUsername: string,
+        bannedBy: string,
+        reason?: string
+    ): Promise<NotificationDocument> {
+        return this.createNotification({
+            recipientUsername,
+            type: 'platform_banned',
+            title: 'Account Banned',
+            message: `Your account was banned by ${bannedBy}${reason ? ` for: ${reason}` : ''}`,
+            data: { bannedBy, reason },
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         });
     }
 

@@ -4,24 +4,28 @@
 // - Persistence: MongoDB (survives page reloads)
 // - UI: Dropdown panel
 import { useState, useEffect } from 'react';
-import { 
-  Bell, 
-  X, 
-  Check, 
-  CheckCheck, 
-  Trash2, 
-  AtSign, 
-  Mail, 
-  Shield, 
+import {
+  Bell,
+  X,
+  Check,
+  CheckCheck,
+  Trash2,
+  AtSign,
+  Mail,
+  Shield,
   AlertCircle,
   UserX,
-  Crown
+  Crown,
+  MessageSquare,
+  UserPlus,
+  UserCheck,
+  Ban
 } from 'lucide-react';
 import { useDarkMode } from '../pages/_app';
 
 interface Notification {
   _id: string;
-  type: 'mention' | 'room_invite' | 'kicked' | 'banned' | 'unbanned' | 'promoted' | 'system_error';
+  type: 'mention' | 'room_invite' | 'kicked' | 'banned' | 'unbanned' | 'muted' | 'promoted' | 'system_error' | 'friend_request' | 'friend_accepted' | 'dm_received' | 'platform_banned';
   title: string;
   message: string;
   data?: any;
@@ -45,11 +49,22 @@ const getNotificationIcon = (type: Notification['type']) => {
     case 'kicked':
       return <UserX className="w-5 h-5 text-orange-500" />;
     case 'banned':
-      return <Shield className="w-5 h-5 text-red-500" />;
+    case 'platform_banned':
+      return <Ban className="w-5 h-5 text-red-500" />;
+    case 'unbanned':
+      return <Shield className="w-5 h-5 text-green-500" />;
+    case 'muted':
+      return <AlertCircle className="w-5 h-5 text-orange-400" />;
     case 'promoted':
       return <Crown className="w-5 h-5 text-yellow-500" />;
     case 'system_error':
       return <AlertCircle className="w-5 h-5 text-red-500" />;
+    case 'friend_request':
+      return <UserPlus className="w-5 h-5 text-blue-400" />;
+    case 'friend_accepted':
+      return <UserCheck className="w-5 h-5 text-green-500" />;
+    case 'dm_received':
+      return <MessageSquare className="w-5 h-5 text-indigo-500" />;
     default:
       return <Bell className="w-5 h-5 text-gray-500" />;
   }
@@ -64,7 +79,7 @@ const formatTimeAgo = (dateString: string): string => {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-  
+
   return date.toLocaleDateString();
 };
 
@@ -81,7 +96,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
       const response = await fetch(`${apiUrl}/api/notifications/${username}`);
-      
+
       if (response.ok) {
         const data = await response.json();
         setNotifications(data.notifications || []);
@@ -98,7 +113,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
   useEffect(() => {
     if (username) {
       fetchNotifications();
-      
+
       // Poll for new notifications every 30 seconds
       const interval = setInterval(fetchNotifications, 30000);
       return () => clearInterval(interval);
@@ -112,7 +127,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
       const response = await fetch(`${apiUrl}/api/notifications/${notificationId}/read`, {
         method: 'POST',
       });
-      
+
       if (response.ok) {
         setNotifications(prev =>
           prev.map(n => n._id === notificationId ? { ...n, isRead: true } : n)
@@ -131,7 +146,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
       const response = await fetch(`${apiUrl}/api/notifications/${username}/read-all`, {
         method: 'POST',
       });
-      
+
       if (response.ok) {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
         setUnreadCount(0);
@@ -148,7 +163,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
       const response = await fetch(`${apiUrl}/api/notifications/${notificationId}`, {
         method: 'DELETE',
       });
-      
+
       if (response.ok) {
         setNotifications(prev => prev.filter(n => n._id !== notificationId));
       }
@@ -160,16 +175,16 @@ export default function NotificationCenter({ username, onNotificationClick, inli
   // Handle notification click
   const handleNotificationClick = (notification: Notification) => {
     markAsRead(notification._id);
-    
+
     if (onNotificationClick) {
       onNotificationClick(notification);
     }
-    
+
     // Navigate to action URL if available
     if (notification.actionUrl) {
       window.location.href = notification.actionUrl;
     }
-    
+
     setIsOpen(false);
   };
 

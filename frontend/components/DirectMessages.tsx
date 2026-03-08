@@ -93,7 +93,7 @@ export default function DirectMessages({
 
   // When activeDMConversation changes from parent (i.e., startDM was called), open it
   useEffect(() => {
-    if (activeDMConversation && activeDMConversation._id) {
+    if (activeDMConversation && activeDMConversation._id && activeDMConversation.otherUser) {
       setActiveChat(activeDMConversation);
       onLoadDMMessages(activeDMConversation._id);
     }
@@ -129,8 +129,10 @@ export default function DirectMessages({
   };
 
   const filteredConversations = conversations.filter((c) =>
-    c.otherUser.username.toLowerCase().includes(search.toLowerCase()) ||
-    c.otherUser.displayName?.toLowerCase().includes(search.toLowerCase())
+    c.otherUser && (
+      c.otherUser.username.toLowerCase().includes(search.toLowerCase()) ||
+      c.otherUser.displayName?.toLowerCase().includes(search.toLowerCase())
+    )
   );
 
   const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);

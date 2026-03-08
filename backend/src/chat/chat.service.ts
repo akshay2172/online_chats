@@ -218,12 +218,13 @@ export class ChatService {
     }
   }
 
-  getUserBySocket(socketId: string) {
+  getRoomsBySocket(socketId: string) {
+    const results: { room: string, user: any }[] = [];
     for (const room in this.activeUsers) {
       const user = this.activeUsers[room].find(u => u.socketId === socketId);
-      if (user) return { room, user };
+      if (user) results.push({ room, user });
     }
-    return null;
+    return results;
   }
 
   getUserSocketId(room: string, username: string): string | undefined {
@@ -478,13 +479,14 @@ export class ChatService {
 
   // Search Messages
   async searchMessages(room: string, query: string, limit: number = 50): Promise<MessageDocument[]> {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return await this.messageModel
       .find({
         room,
         isDeleted: false,
         $or: [
-          { message: { $regex: query, $options: 'i' } },
-          { sender: { $regex: query, $options: 'i' } },
+          { message: { $regex: escapedQuery, $options: 'i' } },
+          { sender: { $regex: escapedQuery, $options: 'i' } },
         ],
       })
       .sort({ createdAt: -1 })
@@ -523,8 +525,9 @@ export class ChatService {
   }
 
   async updateUserProfile(username: string, updates: any): Promise<UserDocument | null> {
+    const escapedUsername = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return await this.userModel
-      .findOneAndUpdate({ username: new RegExp('^' + username + '$', 'i') }, updates, { new: true })
+      .findOneAndUpdate({ username: new RegExp('^' + escapedUsername + '$', 'i') }, updates, { new: true })
       .exec();
   }
 
