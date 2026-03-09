@@ -109,8 +109,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
     const handleStartDM = (username: string) => {
         if (props.isGuest) return;
         props.onStartDM(username);
-        setActivePanel('directMessages');
-        window.dispatchEvent(new CustomEvent('openDMPanel'));
+        window.dispatchEvent(new CustomEvent('openDMCard'));
     };
 
     // Listen for viewProfileInSidebar event from UserList / other components
@@ -155,7 +154,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
             { icon: <UserPlus className="w-5 h-5" />, label: 'Friends', panel: 'friends', guestHidden: true },
             { icon: <Users className="w-5 h-5" />, label: 'Site Users', panel: 'siteUsers' },
             { icon: <Bell className="w-5 h-5" />, label: 'Notifications', panel: 'notifications', badge: props.unreadCount },
-            { icon: <MessageCircle className="w-5 h-5" />, label: 'Direct Messages', panel: 'directMessages', badge: props.dmUnreadTotal, guestHidden: true },
+            { icon: <MessageCircle className="w-5 h-5" />, label: 'Direct Messages', action: () => window.dispatchEvent(new CustomEvent('openDMCard')), badge: props.dmUnreadTotal, guestHidden: true },
             { icon: <Home className="w-5 h-5" />, label: 'Rooms', panel: 'rooms', dividerAfter: true },
             { icon: <Settings className="w-5 h-5" />, label: 'Settings', panel: 'settings' },
             { icon: <FileText className="w-5 h-5" />, label: 'Media & Files', panel: 'mediaFiles' },

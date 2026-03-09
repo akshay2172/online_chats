@@ -1000,6 +1000,71 @@ export class ChatService {
     return await this.dmMessageModel.findById(messageId).exec();
   }
 
+  async getDMConversationById(conversationId: string): Promise<DMConversationDocument | null> {
+    return await this.dmConversationModel.findById(conversationId).exec();
+  }
+
+  async addDMReaction(messageId: string, emoji: string, username: string): Promise<DMMessageDocument | null> {
+    const msg = await this.dmMessageModel.findById(messageId);
+    if (!msg) return null;
+
+    if (!msg.reactions) {
+      msg.reactions = [];
+    }
+
+    const reactIndex = msg.reactions.findIndex(r => r.emoji === emoji);
+    if (reactIndex >= 0) {
+      if (!msg.reactions[reactIndex].users.includes(username)) {
+        msg.reactions[reactIndex].users.push(username);
+      }
+    } else {
+      msg.reactions.push({ emoji, users: [username] });
+    }
+
+    // Must markModified because reactions might be a mixed type depending on schema
+    msg.markModified('reactions');
+    await msg.save();
+    return msg;
+  }
+
+  async removeDMReaction(messageId: string, emoji: string, username: string): Promise<DMMessageDocument | null> {
+    const msg = await this.dmMessageModel.findById(messageId);
+    if (!msg || !msg.reactions) return null;
+
+    const reactIndex = msg.reactions.findIndex(r => r.emoji === emoji);
+    if (reactIndex >= 0) {
+      msg.reactions[reactIndex].users = msg.reactions[reactIndex].users.filter(u => u !== username);
+      if (msg.reactions[reactIndex].users.length === 0) {
+        msg.reactions.splice(reactIndex, 1);
+      }
+      msg.markModified('reactions');
+      await msg.save();
+    }
+    return msg;
+  }
+
+  async softDeleteDMMessage(messageId: string, username: string): Promise<boolean> {
+    const msg = await this.dmMessageModel.findById(messageId);
+    if (!msg || msg.sender !== username) return false;
+
+    // Using soft delete to keep history if needed or just physical delete based on schema
+    // Assuming physical delete for simplicity as requested 'deleteDMMessage' 
+    // Or we can set isDeleted=true if schema supports it
+    await this.dmMessageModel.findByIdAndDelete(messageId);
+    return true;
+  }
+
+  async editDMMessage(messageId: string, newMessage: string, username: string): Promise<DMMessageDocument | null> {
+    const msg = await this.dmMessageModel.findById(messageId);
+    if (!msg || msg.sender !== username) return null;
+
+    msg.message = newMessage;
+    msg.isEdited = true;
+    msg.editedAt = new Date();
+    await msg.save();
+    return msg;
+  }
+
   async getUserFullProfile(username: string): Promise<any> {
     const user = await this.userModel
       .findOne({ username })

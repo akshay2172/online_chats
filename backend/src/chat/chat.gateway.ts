@@ -1957,6 +1957,163 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.emit('error', { message: 'Failed to delete DM conversation.' });
     }
   }
+  @SubscribeMessage('reactDMMessage')
+  async handleReactDM(
+    @MessageBody() data: { conversationId: string; messageId: string; emoji: string; action: 'add' | 'remove' },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+
+      let msg;
+      if (data.action === 'add') {
+        msg = await this.chatService.addDMReaction(data.messageId, data.emoji, username);
+      } else {
+        msg = await this.chatService.removeDMReaction(data.messageId, data.emoji, username);
+      }
+
+      if (msg) {
+        const conversation = await this.chatService.getDMConversationById(data.conversationId);
+        if (conversation) {
+          const participants = conversation.participants;
+          participants.forEach(p => {
+            const sockets = this.chatService.getUserSocketIds(p);
+            sockets.forEach(s => this.server.to(s).emit('dmMessageReaction', { messageId: data.messageId, reactions: msg.reactions }));
+          });
+        }
+      }
+    } catch (e) {
+      SecurityLogger.logError(e, { event: 'reactDMMessage', user: client.data.user?.username });
+    }
+  }
+
+  @SubscribeMessage('deleteDMMessage')
+  async handleDeleteDMMessage(
+    @MessageBody() data: { conversationId: string; messageId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+
+      const success = await this.chatService.softDeleteDMMessage(data.messageId, username);
+      if (success) {
+        const conversation = await this.chatService.getDMConversationById(data.conversationId);
+        if (conversation) {
+          conversation.participants.forEach(p => {
+            const sockets = this.chatService.getUserSocketIds(p);
+            sockets.forEach(s => this.server.to(s).emit('dmMessageDeleted', { messageId: data.messageId }));
+          });
+        }
+      }
+    } catch (e) {
+      SecurityLogger.logError(e, { event: 'deleteDMMessage', user: client.data.user?.username });
+    }
+  }
+
+  @SubscribeMessage('editDMMessage')
+  async handleEditDMMessage(
+    @MessageBody() data: { conversationId: string; messageId: string; newMessage: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+
+      const sanitized = InputSanitizer.sanitizeMessage(data.newMessage);
+      const msg = await this.chatService.editDMMessage(data.messageId, sanitized, username);
+      if (msg) {
+        const conversation = await this.chatService.getDMConversationById(data.conversationId);
+        if (conversation) {
+          conversation.participants.forEach(p => {
+            const sockets = this.chatService.getUserSocketIds(p);
+            sockets.forEach(s => this.server.to(s).emit('dmMessageEdited', { message: msg }));
+          });
+        }
+      }
+    } catch (e) {
+      SecurityLogger.logError(e, { event: 'editDMMessage', user: client.data.user?.username });
+    }
+  }
+
+  @SubscribeMessage('sendDMGif')
+  async handleSendDMGif(
+    @MessageBody() data: { conversationId: string; receiver: string; gifUrl: string; gifData?: any },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required.' });
+        return;
+      }
+
+      const dmMessage = await this.chatService.sendDMMessage(
+        data.conversationId, username, data.receiver, data.gifUrl, 'gif', data.gifData
+      );
+
+      client.emit('receiveDMMessage', dmMessage);
+      const receiverSockets = this.chatService.getUserSocketIds(data.receiver);
+      for (const s of receiverSockets) {
+        this.server.to(s).emit('receiveDMMessage', dmMessage);
+      }
+
+      // Notify receiver of conversation update
+      for (const s of receiverSockets) {
+        this.server.to(s).emit('dmConversationUpdated', {
+          conversationId: data.conversationId,
+          lastMessage: 'Sent a GIF',
+          lastMessageSender: username,
+          lastMessageAt: new Date(),
+        });
+      }
+    } catch (e) {
+      SecurityLogger.logError(e, { event: 'sendDMGif', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to send GIF.' });
+    }
+  }
+
+  @SubscribeMessage('uploadDMFile')
+  async handleUploadDMFile(
+    @MessageBody() data: { conversationId: string; receiver: string; fileData: any },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) {
+        client.emit('error', { message: 'Authentication required.' });
+        return;
+      }
+
+      let msgType = 'file';
+      if (data.fileData.mimetype?.startsWith('image/')) msgType = 'image';
+      if (data.fileData.mimetype?.startsWith('audio/')) msgType = 'voice';
+
+      const dmMessage = await this.chatService.sendDMMessage(
+        data.conversationId, username, data.receiver, 'Sent a file', msgType, data.fileData
+      );
+
+      client.emit('receiveDMMessage', dmMessage);
+      const receiverSockets = this.chatService.getUserSocketIds(data.receiver);
+      for (const s of receiverSockets) {
+        this.server.to(s).emit('receiveDMMessage', dmMessage);
+      }
+
+      // Notify receiver of conversation update
+      for (const s of receiverSockets) {
+        this.server.to(s).emit('dmConversationUpdated', {
+          conversationId: data.conversationId,
+          lastMessage: msgType === 'image' ? 'Sent an image' : 'Sent a file',
+          lastMessageSender: username,
+          lastMessageAt: new Date(),
+        });
+      }
+    } catch (e) {
+      SecurityLogger.logError(e, { event: 'uploadDMFile', user: client.data.user?.username });
+      client.emit('error', { message: 'Failed to send file.' });
+    }
+  }
 
   @SubscribeMessage('getUserProfile')
   async handleGetUserProfile(

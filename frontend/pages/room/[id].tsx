@@ -9,6 +9,7 @@ import UserToast from '../../components/UserToast';
 import TypingIndicator from '../../components/TypingIndicator';
 import { Search, X, Users, Menu, MessageCircle } from 'lucide-react';
 import SidebarMenu from '../../components/SidebarMenu';
+import DMFloatingCard from '../../components/DMFloatingCard';
 
 interface User {
     name: string;
@@ -76,6 +77,7 @@ export default function Room() {
 
     const [inviteModalTargetUsername, setInviteModalTargetUsername] = useState<string | null>(null);
     const [dmUnreadTotal, setDmUnreadTotal] = useState(0);
+    const [showDMCard, setShowDMCard] = useState(false);
 
     // Friends State
     const [friends, setFriends] = useState<any[]>([]);
@@ -337,9 +339,8 @@ export default function Room() {
         socket.on('dmConversationStarted', (data: any) => {
             setActiveDMConversation(data.conversation);
             setDmMessages(data.messages || []);
-            // Open sidebar and switch to DM panel
-            setIsSidebarOpen(true);
-            window.dispatchEvent(new CustomEvent('openDMPanel'));
+            // Open Floating Card instead of Sidebar
+            setShowDMCard(true);
         });
         socket.on('receiveDMMessage', (msg: any) => {
             setDmMessages(prev => {
@@ -365,6 +366,20 @@ export default function Room() {
         socket.on('dmRead', (data: any) => {
             setDmConversations(prev => prev.map(c =>
                 c._id === data.conversationId ? { ...c, unreadCount: 0 } : c
+            ));
+        });
+
+        socket.on('dmMessageReaction', (data: any) => {
+            setDmMessages(prev => prev.map(m =>
+                m._id === data.messageId ? { ...m, reactions: data.reactions } : m
+            ));
+        });
+        socket.on('dmMessageDeleted', (data: any) => {
+            setDmMessages(prev => prev.filter(m => m._id !== data.messageId));
+        });
+        socket.on('dmMessageEdited', (data: any) => {
+            setDmMessages(prev => prev.map(m =>
+                m._id === data.message._id ? { ...m, ...data.message } : m
             ));
         });
 
@@ -440,6 +455,9 @@ export default function Room() {
             socket.off('dmRead');
             socket.off('avatarUpdated');
             socket.off('userProfileData');
+            socket.off('dmMessageReaction');
+            socket.off('dmMessageDeleted');
+            socket.off('dmMessageEdited');
             clearTimeout(initTimer);
         };
     }, [id]);
@@ -458,6 +476,7 @@ export default function Room() {
         window.addEventListener('beforeunload', handleBeforeUnload);
         window.addEventListener('openDMPanel', forceOpenSidebar);
         window.addEventListener('viewProfileInSidebar', forceOpenSidebar);
+        window.addEventListener('openDMCard', () => setShowDMCard(true));
 
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -532,17 +551,45 @@ export default function Room() {
     // DM Handlers
     const handleStartDM = useCallback((targetUsername: string) => {
         socket.emit('startDM', { targetUsername, username: activeUsername });
-        // Open sidebar and switch to DM panel
-        setIsSidebarOpen(true);
-        window.dispatchEvent(new CustomEvent('openDMPanel'));
+        // Open floating card instead of sidebar
+        setShowDMCard(true);
     }, [activeUsername]);
 
-    const handleSendDMMessage = useCallback((conversationId: string, message: string, receiver: string) => {
-        socket.emit('sendDMMessage', { conversationId, message, receiver, username: activeUsername });
+    const handleSendDMMessage = useCallback((conversationId: string, message: string, receiver: string, messageType?: string, fileData?: any, replyTo?: string) => {
+        socket.emit('sendDMMessage', { conversationId, message, receiver, username: activeUsername, messageType, fileData, replyTo });
     }, [activeUsername]);
 
     const handleDeleteDMConversation = useCallback((conversationId: string) => {
         socket.emit('deleteDMConversation', { conversationId });
+    }, []);
+
+    const handleReactDM = useCallback((conversationId: string, messageId: string, emoji: string, action: 'add' | 'remove') => {
+        socket.emit('reactDMMessage', { conversationId, messageId, emoji, action });
+    }, []);
+
+    const handleDeleteDMMessage = useCallback((conversationId: string, messageId: string) => {
+        socket.emit('deleteDMMessage', { conversationId, messageId });
+    }, []);
+
+    const handleEditDMMessage = useCallback((conversationId: string, messageId: string, newMessage: string) => {
+        socket.emit('editDMMessage', { conversationId, messageId, newMessage });
+    }, []);
+
+    const handleSendDMGif = useCallback((conversationId: string, receiver: string, gifUrl: string, gifData: any) => {
+        socket.emit('sendDMGif', { conversationId, receiver, gifUrl, gifData });
+    }, []);
+
+    const handleDMFileUpload = useCallback(async (conversationId: string, receiver: string, file: File) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, { method: 'POST', body: formData });
+            if (!response.ok) throw new Error('Upload failed');
+            const { url, filename, originalName, mimetype, size } = await response.json();
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+            socket.emit('uploadDMFile', { conversationId, receiver, fileData: { filename, originalName, mimetype, size, url: fullUrl } });
+        } catch { addToast('Upload failed'); }
     }, []);
 
     // Friends Handlers
@@ -839,6 +886,28 @@ export default function Room() {
                     </div>
                 </div>
             )}
+
+            {/* Floating DM Card */}
+            <DMFloatingCard
+                isOpen={showDMCard}
+                onClose={() => setShowDMCard(false)}
+                currentUser={activeUsername}
+                conversations={dmConversations}
+                activeDMConversation={activeDMConversation}
+                dmMessages={dmMessages}
+                dmUnreadTotal={dmUnreadTotal}
+                onStartDM={handleStartDM}
+                onSendDMMessage={handleSendDMMessage}
+                onDeleteDM={handleDeleteDMConversation}
+                onMarkDMAsRead={handleMarkDMAsRead}
+                onLoadDMMessages={handleLoadDMMessages}
+                onViewProfile={handleViewProfile}
+                onReactDM={handleReactDM}
+                onDeleteDMMessage={handleDeleteDMMessage}
+                onEditDMMessage={handleEditDMMessage}
+                onSendDMGif={handleSendDMGif}
+                onDMFileUpload={handleDMFileUpload}
+            />
         </>
     );
 }
