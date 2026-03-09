@@ -1,4 +1,5 @@
 // backend/main.ts - FIXED CORS FOR FILE ACCESS
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { join } from 'path';

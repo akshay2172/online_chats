@@ -13,8 +13,7 @@ export class AuthService {
   private readonly ACCESS_TOKEN_EXPIRY = '15m';
   private readonly REFRESH_TOKEN_EXPIRY = '7d';
 
-  // Store refresh tokens (use Redis in production)
-  private refreshTokens: Map<string, string> = new Map();
+
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -63,7 +62,7 @@ export class AuthService {
     }
 
     const accessToken = this.generateAccessToken(user._id.toString(), user.username, isOwner);
-    const refreshToken = this.generateRefreshToken(user._id.toString());
+    const refreshToken = await this.generateRefreshToken(user._id.toString());
 
     return {
       accessToken,
@@ -102,7 +101,7 @@ export class AuthService {
     );
   }
 
-  generateRefreshToken(userId: string): string {
+  async generateRefreshToken(userId: string): Promise<string> {
     const refreshToken = jwt.sign(
       {
         userId,
@@ -113,8 +112,9 @@ export class AuthService {
       { expiresIn: this.REFRESH_TOKEN_EXPIRY }
     );
 
-    // Store refresh token
-    this.refreshTokens.set(userId, refreshToken);
+    // ✅ Store refresh token in Database instead of memory
+    await this.userModel.findByIdAndUpdate(userId, { refreshToken });
+
     return refreshToken;
   }
 
@@ -126,49 +126,51 @@ export class AuthService {
     }
   }
 
-  verifyRefreshToken(token: string, userId: string): boolean {
+  async verifyRefreshToken(token: string, userId: string): Promise<boolean> {
     try {
       const decoded = jwt.verify(token, this.JWT_REFRESH_SECRET);
-      return this.refreshTokens.get(userId) === token;
+      const user = await this.userModel.findById(userId);
+      return user?.refreshToken === token;
     } catch (error) {
       return false;
     }
   }
 
-  revokeRefreshToken(userId: string): void {
-    this.refreshTokens.delete(userId);
+  async revokeRefreshToken(userId: string): Promise<void> {
+    await this.userModel.findByIdAndUpdate(userId, { refreshToken: null });
   }
 
   // Refresh access token using refresh token
   async refreshAccessToken(refreshToken: string) {
     try {
-      const decoded = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as any;
-
-      if (decoded.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid token type');
+      if (!refreshToken) {
+        console.warn('⚠️ Refresh attempt with no token');
+        throw new UnauthorizedException('No refresh token provided');
       }
 
+      const decoded = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as any;
       const userId = decoded.userId;
 
-      // Verify token exists in store
-      if (this.refreshTokens.get(userId) !== refreshToken) {
+      const user = await this.userModel.findById(userId);
+      if (!user || user.refreshToken !== refreshToken) {
         throw new UnauthorizedException('Refresh token revoked or invalid');
       }
 
-      const user = await this.userModel.findById(userId);
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
+      // ✅ Check for owner status
+      const isOwner = !!process.env.OWNER_ID && user.username === process.env.OWNER_ID;
 
       // Generate new access token
-      const newAccessToken = this.generateAccessToken(userId, user.username);
+      const newAccessToken = this.generateAccessToken(userId, user.username, isOwner);
+      console.log(`✅ Token refreshed successfully for ${user.username}`);
 
       return {
         accessToken: newAccessToken,
         username: user.username,
         email: user.email,
+        isOwner,
       };
     } catch (error) {
+      console.error('❌ refreshAccessToken error:', error.message);
       if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
         throw error;
       }
@@ -177,7 +179,7 @@ export class AuthService {
   }
 
   // Logout - revoke refresh token
-  logout(userId: string): void {
-    this.revokeRefreshToken(userId);
+  async logout(userId: string): Promise<void> {
+    await this.revokeRefreshToken(userId);
   }
 }

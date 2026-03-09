@@ -22,7 +22,7 @@ export class AuthController {
 
   @Post('logout')
   async logout(@Body() body: { userId: string }) {
-    this.authService.logout(body.userId);
+    await this.authService.logout(body.userId);
     return { message: 'Logged out successfully' };
   }
 }

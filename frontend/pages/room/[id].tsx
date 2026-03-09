@@ -312,20 +312,13 @@ export default function Room() {
             const refreshed = await handleAuthExpiry();
             if (refreshed) {
                 // Token was refreshed successfully - socket reconnected with new token
-                // Re-join the room with the authenticated identity
+                // Mark as no longer guest
+                setIsGuest(false);
+
+                // Token was refreshed, socket was reconnected by handleAuthExpiry.  
+                // The onConnect handler will handle re-joining the room.  
+                // Just reset the join flag so onConnect can do its job.  
                 hasJoinedRef.current = false;
-                const savedUsername = localStorage.getItem('username');
-                if (savedUsername && id) {
-                    socket.emit('joinRoom', {
-                        room: id,
-                        username: savedUsername,
-                        gender: localStorage.getItem('gender') || 'other',
-                        country: localStorage.getItem('country') || 'Unknown',
-                        avatar: localStorage.getItem('avatar') || undefined,
-                    });
-                    hasJoinedRef.current = true;
-                    socket.emit('getDMConversations');
-                }
             } else {
                 // Refresh failed - clear all auth data and mark as guest
                 localStorage.removeItem('accessToken');

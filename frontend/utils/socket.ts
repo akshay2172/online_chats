@@ -13,20 +13,25 @@ const socket: Socket = io(SOCKET_URL, {
   transports: ['websocket', 'polling'],
 });
 
-export const connectSocket = () => {
-  // ✅ FIX: Use consistent token key
+socket.io.on('reconnect_attempt', () => {
   const token = localStorage.getItem('accessToken');
-
-  // ✅ FIX: Allow guest connections without token
   if (token) {
     socket.auth = { token };
-    console.log('🔐 Connecting with authentication token - socket.ts:23');
   } else {
-    console.log('👤 Connecting as guest (no token) - socket.ts:25');
-    // Clear any previous auth
     socket.auth = {};
   }
+});
 
+export const connectSocket = () => {
+  console.log('🔗 Connecting socket...');
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    socket.auth = { token };
+    startTokenRefreshInterval(); // Start proactive refresh
+  } else {
+    socket.auth = {};
+    stopTokenRefreshInterval(); // No need for refresh if guest
+  }
   socket.connect();
   return true;
 };
@@ -40,23 +45,48 @@ export const getStoredUsername = (): string | null => {
 };
 
 export const disconnectSocket = () => {
+  stopTokenRefreshInterval();
   socket.disconnect();
 };
 
 export const setSocketToken = (token: string) => {
-  socket.auth = { token };
   localStorage.setItem('accessToken', token);
-  if (!socket.connected) {
+  startTokenRefreshInterval();
+  // Re-evaluating auth by reconnecting
+  if (socket.connected) {
+    socket.disconnect();
+    socket.connect();
+  } else {
     socket.connect();
   }
 };
 
+let isRefreshing = false;
+
 export const handleAuthExpiry = async () => {
+  if (isRefreshing) {
+    console.log('🔄 Token refresh already in progress, skipping duplicate call');
+    return true;
+  }
+
   const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) return false;
+  if (!refreshToken) {
+    console.warn('❌ Cannot refresh: No refresh token in localStorage');
+    return false;
+  }
+
+  isRefreshing = true;
+  console.log('🔄 Attempting to refresh access token...');
+
+  // ✅ OPTIMIZATION: Check if another tab already refreshed the token
+  // If the socket is currently failing but the token in localStorage is already different 
+  // from what we'd expect, it might have been refreshed elsewhere.
+  // However, since we now use a FUNCTION for socket.auth, simply reconnecting will use the new token.
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/refresh`, {
+    const response = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -64,18 +94,65 @@ export const handleAuthExpiry = async () => {
 
     if (response.ok) {
       const data = await response.json();
+      console.log('✅ Token refreshed successfully');
+
       localStorage.setItem('accessToken', data.accessToken);
+
       // Reconnect with new token
       socket.disconnect();
-      socket.auth = { token: data.accessToken };
       socket.connect();
+
+      isRefreshing = false;
       return true;
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Token refresh endpoint returned error:', response.status, errorData);
     }
   } catch (err) {
-    console.error('Token refresh failed:', err);
+    console.error('❌ Token refresh fetch failed:', err);
   }
 
+  isRefreshing = false;
   return false;
+};
+
+// Add at module level  
+let tokenRefreshInterval: ReturnType<typeof setInterval> | null = null;
+
+// New function to start proactive token refresh  
+export const startTokenRefreshInterval = () => {
+  stopTokenRefreshInterval(); // Clear any existing interval  
+
+  // Refresh every 12 minutes (token expires in 15m, so refresh 3 min early)  
+  tokenRefreshInterval = setInterval(async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return;
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('accessToken', data.accessToken);
+        console.log('🔄 Token proactively refreshed');
+      }
+    } catch (err) {
+      console.error('❌ Proactive token refresh failed:', err);
+    }
+  }, 12 * 60 * 1000); // 12 minutes  
+};
+
+export const stopTokenRefreshInterval = () => {
+  if (tokenRefreshInterval) {
+    clearInterval(tokenRefreshInterval);
+    tokenRefreshInterval = null;
+  }
 };
 
 export default socket;

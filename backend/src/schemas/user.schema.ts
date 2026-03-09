@@ -72,6 +72,9 @@ export class User {
 
   @Prop({ default: false })
   isModerator: boolean; // Kept for your backward compatibility
+
+  @Prop({ default: null })
+  refreshToken: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

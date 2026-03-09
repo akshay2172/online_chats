@@ -1,4 +1,5 @@
 // backend/middleware/socket-auth.middleware.ts
+import 'dotenv/config';
 import { Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
 

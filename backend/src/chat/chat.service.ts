@@ -69,6 +69,18 @@ export class ChatService {
     return this.activeUsers[room] || [];
   }
 
+  // ✅ FIX: Returns a deduplicated list of users by username
+  getUniqueUsersInRoom(room: string): RoomUser[] {
+    const allUsers = this.getUsersInRoom(room);
+    const uniqueMap = new Map<string, RoomUser>();
+    for (const user of allUsers) {
+      if (!uniqueMap.has(user.name)) {
+        uniqueMap.set(user.name, user);
+      }
+    }
+    return Array.from(uniqueMap.values());
+  }
+
 
   // --- 🛡️ GLOBAL MODERATION & USER CHECKS ---
 
@@ -235,7 +247,7 @@ export class ChatService {
   // Returns active users with roles read dynamically from the DB
   async getUsersInRoomWithRoles(roomName: string): Promise<any[]> {
     const room = await this.roomModel.findOne({ name: roomName });
-    const active = this.activeUsers[roomName] || [];
+    const active = this.getUniqueUsersInRoom(roomName);
 
     const usersWithRoles = await Promise.all(
       active.map(async u => {
