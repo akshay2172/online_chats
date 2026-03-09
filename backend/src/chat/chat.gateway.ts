@@ -1747,13 +1747,33 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Check blocks (both directions)
       const isBlockedByTarget = await this.chatService.isUserBlocked(data.targetUsername, username);
       if (isBlockedByTarget) {
-        client.emit('error', { message: 'You cannot message this user.' });
+        client.emit('dmBlocked', {
+          targetUsername: data.targetUsername,
+          direction: 'blockedByTarget',
+          message: 'This user has blocked you.',
+          targetUser: {
+            username: targetUser.username,
+            avatar: targetUser.avatar,
+            displayName: targetUser.displayName,
+            status: targetUser.status || 'offline',
+          }
+        });
         return;
       }
 
       const hasBlockedTarget = await this.chatService.isUserBlocked(username, data.targetUsername);
       if (hasBlockedTarget) {
-        client.emit('error', { message: 'You have blocked this user. Unblock them to send messages.' });
+        client.emit('dmBlocked', {
+          targetUsername: data.targetUsername,
+          direction: 'blockedByYou',
+          message: 'You have blocked this user. Unblock them to send messages.',
+          targetUser: {
+            username: targetUser.username,
+            avatar: targetUser.avatar,
+            displayName: targetUser.displayName,
+            status: targetUser.status || 'offline',
+          }
+        });
         return;
       }
 
@@ -1817,6 +1837,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Check blocks
       const isBlockedByReceiver = await this.chatService.isUserBlocked(data.receiver, username);
       if (isBlockedByReceiver) {
+        client.emit('dmBlocked', {
+          targetUsername: data.receiver,
+          direction: 'blockedByTarget',
+          message: 'This user has blocked you.',
+        });
         client.emit('error', { message: 'You cannot message this user.' });
         return;
       }

@@ -142,6 +142,7 @@ export const startTokenRefreshInterval = () => {
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('accessToken', data.accessToken);
+        socket.auth = { token: data.accessToken };
         console.log('🔄 Token proactively refreshed');
       }
     } catch (err) {

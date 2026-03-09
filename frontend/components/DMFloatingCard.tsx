@@ -5,7 +5,7 @@ import {
     MessageCircle, Search, X, User as UserIcon, MoreVertical, Trash2,
     ArrowLeft, Send, Paperclip, Image as ImageIcon, Loader2, Check, CheckCheck,
     Minimize2, Maximize2, Settings, Smile, Edit2, FileIcon, MessageSquare, PlusCircle,
-    Mic, MicOff, Copy, Reply
+    Mic, MicOff, Copy, Reply, Ban
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useDarkMode } from '../pages/_app';
@@ -63,6 +63,13 @@ interface DMFloatingCardProps {
     onEditDMMessage: (conversationId: string, messageId: string, newMessage: string) => void;
     onSendDMGif: (conversationId: string, receiver: string, gifUrl: string, gifData: any) => void;
     onDMFileUpload: (conversationId: string, receiver: string, file: File) => void;
+    blockedInfo?: {
+        targetUsername: string;
+        direction: 'blockedByTarget' | 'blockedByYou';
+        message: string;
+        targetUser?: { username: string; avatar?: string; displayName?: string; status?: string };
+    } | null;
+    onClearBlockedInfo?: () => void;
 }
 
 const getStatusColor = (status?: string) => {
@@ -91,7 +98,7 @@ export default function DMFloatingCard({
     isOpen, onClose, onMinimize, currentUser, conversations, activeDMConversation,
     dmMessages, dmUnreadTotal, onStartDM, onSendDMMessage, onDeleteDM,
     onMarkDMAsRead, onLoadDMMessages, onViewProfile, onReactDM, onDeleteDMMessage,
-    onEditDMMessage, onSendDMGif, onDMFileUpload
+    onEditDMMessage, onSendDMGif, onDMFileUpload, blockedInfo, onClearBlockedInfo
 }: DMFloatingCardProps) {
     const [isMinimized, setIsMinimized] = useState(false);
     const [search, setSearch] = useState('');
@@ -165,6 +172,7 @@ export default function DMFloatingCard({
         }
         setReplyTo(null);
         setSearch('');
+        if (onClearBlockedInfo) onClearBlockedInfo();
     };
 
     const handleSend = () => {
@@ -343,7 +351,7 @@ export default function DMFloatingCard({
                 borderColor: 'var(--border-color)',
                 borderWidth: '1px',
                 borderBottomWidth: 0,
-                width: activeChat ? '750px' : '350px',
+                width: (activeChat || blockedInfo) ? '750px' : '350px',
                 height: '550px' // Taller for good view
             }}
         >
@@ -440,6 +448,65 @@ export default function DMFloatingCard({
                     ))}
                 </div>
             </div>
+
+            {/* RIGHT PANEL: Blocked State */}
+            {!activeChat && blockedInfo && (
+                <div className="flex flex-col h-full w-2/3 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                    {/* Blocked Header */}
+                    <div className="p-3 border-b flex justify-between items-center shrink-0" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="relative w-8 h-8 shrink-0">
+                                {blockedInfo.targetUser?.avatar ? (
+                                    <img src={blockedInfo.targetUser.avatar} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                                ) : (
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs" style={{ backgroundColor: '#ef4444' }}>
+                                        {blockedInfo.targetUsername.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                                    {blockedInfo.targetUser?.displayName || blockedInfo.targetUsername}
+                                </div>
+                                <div className="text-[10px] text-red-500 font-medium">Blocked</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Blocked Message Body */}
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
+                            <Ban className="w-8 h-8 text-red-500" />
+                        </div>
+                        <p className="text-base font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                            {blockedInfo.direction === 'blockedByYou'
+                                ? 'You have blocked this user'
+                                : 'You are blocked by this user'}
+                        </p>
+                        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                            {blockedInfo.direction === 'blockedByYou'
+                                ? 'Unblock them from their profile to send messages.'
+                                : 'You cannot send messages to this user.'}
+                        </p>
+                    </div>
+
+                    {/* Disabled Input */}
+                    <div className="p-3 border-t opacity-50 pointer-events-none" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                placeholder="You can't message this user"
+                                disabled
+                                className="flex-1 rounded-full px-4 py-2 text-sm cursor-not-allowed border"
+                                style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
+                            />
+                            <button disabled className="p-2 bg-gray-400 text-white rounded-full cursor-not-allowed">
+                                <Send className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* RIGHT PANEL: Active Chat */}
             {activeChat && (
@@ -712,78 +779,91 @@ export default function DMFloatingCard({
                     )}
 
                     {/* Input Area */}
-                    <div className="p-3 border-t" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
-                        {replyTo && (
-                            <div className="flex justify-between items-center mb-2 px-2 py-1 text-xs rounded-lg border-l-2 border-blue-500" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                                <div className="truncate" style={{ color: 'var(--text-primary)' }}>Replying to <span className="font-semibold">{replyTo.sender}</span>: {replyTo.message}</div>
-                                <button onClick={() => setReplyTo(null)} className="p-1 rounded hover:opacity-70"><X className="w-3 h-3" /></button>
+                    {blockedInfo && activeChat && blockedInfo.targetUsername === activeChat.otherUser.username ? (
+                        <div className="p-3 border-t" style={{ borderColor: 'var(--border-color)', backgroundColor: 'rgba(239,68,68,0.05)' }}>
+                            <div className="flex items-center justify-center gap-2 text-red-500 text-sm py-1">
+                                <Ban className="w-4 h-4" />
+                                <span className="font-medium">
+                                    {blockedInfo.direction === 'blockedByYou'
+                                        ? 'You have blocked this user. Unblock to send messages.'
+                                        : 'This user has blocked you.'}
+                                </span>
                             </div>
-                        )}
-
-                        {/* Voice Recording UI */}
-                        {isRecording ? (
-                            <div className="flex items-center gap-3 py-1">
-                                <div className="flex items-center gap-2 flex-1">
-                                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Recording... {recordingDuration}s</span>
+                        </div>
+                    ) : (
+                        <div className="p-3 border-t" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
+                            {replyTo && (
+                                <div className="flex justify-between items-center mb-2 px-2 py-1 text-xs rounded-lg border-l-2 border-blue-500" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                                    <div className="truncate" style={{ color: 'var(--text-primary)' }}>Replying to <span className="font-semibold">{replyTo.sender}</span>: {replyTo.message}</div>
+                                    <button onClick={() => setReplyTo(null)} className="p-1 rounded hover:opacity-70"><X className="w-3 h-3" /></button>
                                 </div>
-                                <button onClick={cancelVoiceRecording} className="p-2 rounded-full hover:opacity-80" style={{ color: 'var(--text-muted)' }} title="Cancel">
-                                    <X className="w-5 h-5" />
-                                </button>
-                                <button onClick={stopVoiceRecording} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="Send Voice">
-                                    <Send className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <button
-                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
-                                    onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
-                                >
-                                    <Smile className="w-5 h-5" />
-                                </button>
-                                <button
-                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    <Paperclip className="w-5 h-5" />
-                                </button>
-                                <button
-                                    className="p-1 font-bold font-mono border rounded px-1 min-w-[32px] text-center text-xs" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
-                                    onClick={() => { setShowGifPicker(!showGifPicker); setShowEmojiPicker(false); searchTenorGifs(''); }}
-                                >
-                                    GIF
-                                </button>
-                                <button
-                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
-                                    onClick={startVoiceRecording}
-                                    title="Voice Message"
-                                >
-                                    <Mic className="w-5 h-5" />
-                                </button>
+                            )}
 
-                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+                            {/* Voice Recording UI */}
+                            {isRecording ? (
+                                <div className="flex items-center gap-3 py-1">
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Recording... {recordingDuration}s</span>
+                                    </div>
+                                    <button onClick={cancelVoiceRecording} className="p-2 rounded-full hover:opacity-80" style={{ color: 'var(--text-muted)' }} title="Cancel">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                    <button onClick={stopVoiceRecording} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="Send Voice">
+                                        <Send className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                        onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
+                                    >
+                                        <Smile className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <Paperclip className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        className="p-1 font-bold font-mono border rounded px-1 min-w-[32px] text-center text-xs" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
+                                        onClick={() => { setShowGifPicker(!showGifPicker); setShowEmojiPicker(false); searchTenorGifs(''); }}
+                                    >
+                                        GIF
+                                    </button>
+                                    <button
+                                        className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                        onClick={startVoiceRecording}
+                                        title="Voice Message"
+                                    >
+                                        <Mic className="w-5 h-5" />
+                                    </button>
 
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    placeholder="Message..."
-                                    value={messageText}
-                                    onChange={(e) => setMessageText(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                    className="flex-1 rounded-full px-4 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none border"
-                                    style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
-                                />
-                                <button
-                                    onClick={handleSend}
-                                    disabled={!messageText.trim() && !fileInputRef.current?.value}
-                                    className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 -ml-0.5 mt-0.5" />}
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+
+                                    <input
+                                        ref={inputRef}
+                                        type="text"
+                                        placeholder="Message..."
+                                        value={messageText}
+                                        onChange={(e) => setMessageText(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                        className="flex-1 rounded-full px-4 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none border"
+                                        style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
+                                    />
+                                    <button
+                                        onClick={handleSend}
+                                        disabled={!messageText.trim() && !fileInputRef.current?.value}
+                                        className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 -ml-0.5 mt-0.5" />}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                 </div>
             )}

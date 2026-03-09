@@ -79,6 +79,12 @@ export default function Room() {
     const [inviteModalTargetUsername, setInviteModalTargetUsername] = useState<string | null>(null);
     const [dmUnreadTotal, setDmUnreadTotal] = useState(0);
     const [showDMCard, setShowDMCard] = useState(false);
+    const [dmBlockedInfo, setDmBlockedInfo] = useState<{
+        targetUsername: string;
+        direction: 'blockedByTarget' | 'blockedByYou';
+        message: string;
+        targetUser?: { username: string; avatar?: string; displayName?: string; status?: string };
+    } | null>(null);
 
     // Friends State
     const [friends, setFriends] = useState<any[]>([]);
@@ -342,6 +348,16 @@ export default function Room() {
             setDmMessages(data.messages || []);
             // Open Floating Card instead of Sidebar
             setShowDMCard(true);
+            setDmBlockedInfo(null);
+        });
+        socket.on('dmBlocked', (data: any) => {
+            setDmBlockedInfo({
+                targetUsername: data.targetUsername,
+                direction: data.direction,
+                message: data.message,
+                targetUser: data.targetUser,
+            });
+            setShowDMCard(true);
         });
         socket.on('receiveDMMessage', (msg: any) => {
             setDmMessages(prev => {
@@ -459,6 +475,7 @@ export default function Room() {
             socket.off('dmMessageReaction');
             socket.off('dmMessageDeleted');
             socket.off('dmMessageEdited');
+            socket.off('dmBlocked');
             clearTimeout(initTimer);
         };
     }, [id]);
@@ -891,7 +908,7 @@ export default function Room() {
             {/* Floating DM Card */}
             <DMFloatingCard
                 isOpen={showDMCard}
-                onClose={() => setShowDMCard(false)}
+                onClose={() => { setShowDMCard(false); setDmBlockedInfo(null); }}
                 currentUser={activeUsername}
                 conversations={dmConversations}
                 activeDMConversation={activeDMConversation}
@@ -908,6 +925,8 @@ export default function Room() {
                 onEditDMMessage={handleEditDMMessage}
                 onSendDMGif={handleSendDMGif}
                 onDMFileUpload={handleDMFileUpload}
+                blockedInfo={dmBlockedInfo}
+                onClearBlockedInfo={() => setDmBlockedInfo(null)}
             />
 
             {/* Floating DM Button - bottom right */}
