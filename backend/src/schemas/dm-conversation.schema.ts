@@ -30,4 +30,3 @@ export const DMConversationSchema = SchemaFactory.createForClass(DMConversation)
 // Indexes
 DMConversationSchema.index({ participants: 1 });
 DMConversationSchema.index({ lastMessageAt: -1 });
-DMConversationSchema.index({ 'participants': 1, 'deletedBy': 1 });
