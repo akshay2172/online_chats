@@ -51,6 +51,7 @@ export const disconnectSocket = () => {
 
 export const setSocketToken = (token: string) => {
   localStorage.setItem('accessToken', token);
+  socket.auth = { token };
   startTokenRefreshInterval();
   // Re-evaluating auth by reconnecting
   if (socket.connected) {
@@ -100,6 +101,7 @@ export const handleAuthExpiry = async () => {
 
       // Reconnect with new token
       socket.disconnect();
+      socket.auth = { token: data.accessToken };
       socket.connect();
 
       isRefreshing = false;
