@@ -35,7 +35,9 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [gender, setGender] = useState('');
   const [country, setCountry] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const router = useRouter();
 
   // Check if user is already logged in
@@ -46,6 +48,9 @@ export default function Home() {
     if (token && savedUsername) {
       // Auto-redirect to guest entry (they can still choose to login)
       setUsername(savedUsername);
+      setGender(localStorage.getItem('gender') || '');
+      setCountry(localStorage.getItem('country') || '');
+      setIsLoggedIn(true);
       setView('guest');
     }
   }, []);
@@ -74,6 +79,7 @@ export default function Home() {
         setUsername(data.username);
         setGender(data.gender || 'other');
         setCountry(data.country || 'Unknown');
+        setIsLoggedIn(true);
         setView('guest'); // Show room selection
       } else {
         const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
@@ -103,6 +109,7 @@ export default function Home() {
           password,
           gender,
           country,
+          displayName: displayName || username,
         }),
       });
 
@@ -155,6 +162,7 @@ export default function Home() {
     setUsername('');
     setGender('other');
     setCountry('Unknown');
+    setIsLoggedIn(false);
     setView('guest');
   };
 
@@ -302,11 +310,19 @@ export default function Home() {
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
               <input
                 type="text"
-                placeholder="Username"
+                placeholder="Username (unique, cannot change)"
                 className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-purple-500"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 maxLength={20}
+              />
+              <input
+                type="text"
+                placeholder="Display Name (shown to others)"
+                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-purple-500"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                maxLength={30}
               />
               <input
                 type="email"
@@ -405,11 +421,16 @@ export default function Home() {
               <input
                 type="text"
                 placeholder="Enter your display name"
-                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className={`w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isLoggedIn ? 'opacity-70 cursor-not-allowed' : ''}`}
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => !isLoggedIn && setUsername(e.target.value)}
+                readOnly={isLoggedIn}
+                disabled={isLoggedIn}
                 maxLength={20}
               />
+              {isLoggedIn && (
+                <p className="text-xs text-gray-500 mt-1">Username cannot be changed for registered accounts</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -421,7 +442,8 @@ export default function Home() {
                 {['male', 'female', 'other'].map((g) => (
                   <button
                     key={g}
-                    onClick={() => setGender(g)}
+                    onClick={() => !isLoggedIn && setGender(g)}
+                    disabled={isLoggedIn}
                     className={`p-3 rounded-lg border transition-all ${gender === g
                       ? 'bg-blue-900 border-blue-500 text-white'
                       : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white'
@@ -445,9 +467,10 @@ export default function Home() {
               </label>
               <div className="relative">
                 <select
-                  className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white appearance-none outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-10"
+                  className={`w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white appearance-none outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-10 ${isLoggedIn ? 'opacity-70 cursor-not-allowed' : ''}`}
                   value={country}
-                  onChange={e => setCountry(e.target.value)}
+                  onChange={e => !isLoggedIn && setCountry(e.target.value)}
+                  disabled={isLoggedIn}
                 >
                   <option value="" className="bg-gray-800">Select your country</option>
                   {countries.map((c) => (

@@ -13,6 +13,7 @@ import { FriendRequest, FriendRequestDocument } from '../schemas/friend-request.
 
 export interface RoomUser {
   name: string;
+  displayName?: string;
   gender: 'male' | 'female' | 'other';
   country: string;
   socketId: string;
@@ -257,11 +258,12 @@ export class ChatService {
           else if (room.moderators?.includes(u.name)) role = 'moderator';
         }
 
-        // Fetch globalRole from DB
-        const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole').lean();
+        // Fetch globalRole and displayName from DB
+        const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole displayName').lean();
         const globalRole = dbUser?.globalRole || 'user';
+        const displayName = dbUser?.displayName || u.displayName || u.name;
 
-        return { ...u, role, globalRole };
+        return { ...u, role, globalRole, displayName };
       })
     );
 

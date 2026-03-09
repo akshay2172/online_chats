@@ -914,10 +914,10 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                                                 setActivePanel(item.panel);
                                             }
                                         }}
-                                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-150 group ${item.danger
-                                            ? 'hover:bg-red-50 dark:hover:bg-red-900/20'
-                                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                                            }`}
+                                        className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-150 group"
+                                        style={{ backgroundColor: 'transparent' }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = item.danger ? 'rgba(239,68,68,0.1)' : 'var(--bg-secondary)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     >
                                         <div className="flex items-center gap-3">
                                             <span

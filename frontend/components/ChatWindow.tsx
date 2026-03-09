@@ -90,7 +90,7 @@ interface Props {
   onToggleSearch?: () => void;
   onJumpToMessage?: (messageId: string) => void;
   highlightedMessageId?: string | null;
-  users?: Array<{ name: string; status?: string; avatar?: string; role?: string; globalRole?: string }>;
+  users?: Array<{ name: string; displayName?: string; status?: string; avatar?: string; role?: string; globalRole?: string }>;
 }
 
 const ChatWindow: React.FC<Props> = ({
@@ -304,6 +304,11 @@ const ChatWindow: React.FC<Props> = ({
   const getUserRole = (username: string): string | undefined => {
     const user = users.find(u => u.name === username);
     return user?.role;
+  };
+
+  const getUserDisplayName = (username: string): string => {
+    const user = users.find(u => u.name === username);
+    return user?.displayName || username;
   };
 
   const getRepliedMessage = (replyToId: string | null): Message | null => {
@@ -995,7 +1000,7 @@ const ChatWindow: React.FC<Props> = ({
                             className="text-xs font-medium mb-1 break-words"
                             style={{ color: 'var(--text-secondary)' }}
                           >
-                            {msg.sender}
+                            {getUserDisplayName(msg.sender)}
                           </p>
                         )}
 

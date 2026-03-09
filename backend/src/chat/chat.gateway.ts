@@ -197,9 +197,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Join Socket.io room
       client.join(room);
 
+      // Fetch displayName from DB for registered users
+      let displayName = data.displayName || username;
+      if (!isGuest) {
+        const dbUser = await this.chatService.getUserWithRole(username);
+        if (dbUser?.displayName) displayName = dbUser.displayName;
+      }
+
       // Add to active users in memory
       this.chatService.addUserToRoom(room, {
-        name: username, gender, country, socketId: client.id, isActive: true, avatar: data.avatar, status: 'online',
+        name: username, displayName, gender, country, socketId: client.id, isActive: true, avatar: data.avatar, status: 'online',
       });
 
       // Update Database Status
@@ -1006,8 +1013,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // Now join the room
       client.join(room.name);
+      // Fetch displayName from DB
+      let displayName = data.displayName || username;
+      const dbUser = await this.chatService.getUserWithRole(username);
+      if (dbUser?.displayName) displayName = dbUser.displayName;
+
       this.chatService.addUserToRoom(room.name, {
         name: username,
+        displayName,
         gender: data.gender,
         country: data.country,
         socketId: client.id,

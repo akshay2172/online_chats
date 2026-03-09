@@ -13,6 +13,7 @@ import DMFloatingCard from '../../components/DMFloatingCard';
 
 interface User {
     name: string;
+    displayName?: string;
     gender: 'male' | 'female' | 'other';
     country: string;
     isActive?: boolean;
@@ -793,7 +794,7 @@ export default function Room() {
 
                                 <div className="text-sm border-l border-gray-200 dark:border-gray-700 pl-4 hidden md:block">
                                     <span className="text-gray-500 dark:text-gray-400">Logged in as</span>
-                                    <span className="ml-2 font-medium text-gray-700 dark:text-gray-200">{activeUsername}</span>
+                                    <span className="ml-2 font-medium text-gray-700 dark:text-gray-200">{localQuery?.displayName || activeUsername}</span>
                                 </div>
 
                                 <button onClick={() => setShowUserList(!showUserList)} className={`p-2 rounded-full transition-all relative ${showUserList ? 'bg-blue-500 text-white hover:bg-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
@@ -908,6 +909,22 @@ export default function Room() {
                 onSendDMGif={handleSendDMGif}
                 onDMFileUpload={handleDMFileUpload}
             />
+
+            {/* Floating DM Button - bottom right */}
+            {!isGuest && (
+                <button
+                    onClick={() => setShowDMCard(true)}
+                    className="fixed bottom-5 right-5 z-40 p-3.5 rounded-full shadow-lg transition-all hover:scale-110 bg-gradient-to-r from-blue-500 to-purple-500 text-white"
+                    title="Direct Messages"
+                >
+                    <MessageCircle className="w-6 h-6" />
+                    {dmUnreadTotal > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                            {dmUnreadTotal > 99 ? '99+' : dmUnreadTotal}
+                        </span>
+                    )}
+                </button>
+            )}
         </>
     );
 }

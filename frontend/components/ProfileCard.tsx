@@ -57,6 +57,7 @@ export default function ProfileCard({
     const [isUploadingCover, setIsUploadingCover] = useState(false);
     const [previewCover, setPreviewCover] = useState<string | null>(null);
     const [showOptionsPopup, setShowOptionsPopup] = useState(false);
+    const [profileBlocked, setProfileBlocked] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,6 +110,11 @@ export default function ProfileCard({
             setEditAge(displayProfile.age || '');
         }
     }, [displayProfile?.username, displayProfile?.bio, displayProfile?.status, displayProfile?.displayName, displayProfile?.age, isEditing]);
+
+    // Sync blocked state from profile data
+    useEffect(() => {
+        if (displayProfile) setProfileBlocked(!!displayProfile.isBlocked);
+    }, [displayProfile?.isBlocked]);
 
     // Loading state
     if (loading) {
@@ -337,28 +343,39 @@ export default function ProfileCard({
                                 <button
                                     onClick={() => {
                                         setShowOptionsPopup(false);
-                                        if (displayProfile.isBlocked) {
+                                        if (profileBlocked) {
                                             if (onUnblockUser) onUnblockUser(displayProfile.username);
+                                            setProfileBlocked(false);
                                         } else {
                                             if (onBlockUser) onBlockUser(displayProfile.username);
+                                            setProfileBlocked(true);
                                         }
                                     }}
-                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80"
-                                    style={{ color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
+                                    style={{
+                                        color: profileBlocked ? '#22c55e' : '#ef4444',
+                                        backgroundColor: 'transparent'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
-                                    {displayProfile.isBlocked ? 'Unblock User' : 'Block User'}
+                                    {profileBlocked ? '✓ Unblock User' : '⛔ Block User'}
                                 </button>
                                 <button
                                     onClick={() => { setShowOptionsPopup(false); if (onInviteToRoom) onInviteToRoom(displayProfile.username); }}
-                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80"
+                                    className="w-full text-left px-4 py-2.5 text-sm transition-colors"
                                     style={{ color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
-                                    Invite to Rooms
+                                    Invite to Room
                                 </button>
                                 <button
                                     onClick={() => { setShowOptionsPopup(false); if (onReportProfile) onReportProfile(displayProfile.username); }}
-                                    className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80 text-red-500"
-                                    style={{ backgroundColor: 'transparent' }}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
+                                    style={{ color: '#ef4444', backgroundColor: 'transparent' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     Report Profile
                                 </button>

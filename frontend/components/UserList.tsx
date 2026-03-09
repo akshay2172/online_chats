@@ -5,6 +5,7 @@ import { useDarkMode } from '../pages/_app';
 
 interface User {
   name: string;
+  displayName?: string;
   gender: 'male' | 'female' | 'other';
   country: string;
   isActive?: boolean;
@@ -185,7 +186,7 @@ const UserList: React.FC<Props> = ({
                     : 'bg-gradient-to-r from-purple-100 to-purple-50 text-purple-600 dark:from-purple-900/50 dark:to-purple-800/50 dark:text-purple-300'
                   }`}
               >
-                {user.name ? user.name.charAt(0).toUpperCase() : '?'}
+                {(user.displayName || user.name || '?').charAt(0).toUpperCase()}
               </div>
             )}
             {/* Status Dot */}
@@ -202,7 +203,7 @@ const UserList: React.FC<Props> = ({
                 className={`font-medium truncate ${user.name === currentUser ? 'text-white' : ''}`}
                 style={user.name !== currentUser ? { color: 'var(--text-primary)' } : {}}
               >
-                {user.name || 'Unknown'}
+                {user.displayName || user.name || 'Unknown'}
               </span>
               {getRoleIcon(user.role)}
               {user.name === currentUser && (
@@ -259,7 +260,7 @@ const UserList: React.FC<Props> = ({
               e.currentTarget.style.backgroundColor = 'transparent';
               e.currentTarget.style.color = 'var(--text-muted)';
             }}
-            title={`Message ${user.name}`}
+            title={`Message ${user.displayName || user.name}`}
           >
             <MessageCircle className="w-4 h-4" />
           </button>
@@ -445,7 +446,7 @@ const UserList: React.FC<Props> = ({
                     className="text-xl font-bold"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    {selectedUser.name}
+                    {selectedUser.displayName || selectedUser.name}
                   </h3>
                   <div className="flex items-center space-x-2 mt-1">
                     <div className={`w-2 h-2 rounded-full ${getStatusColor(selectedUser.status)}`} />

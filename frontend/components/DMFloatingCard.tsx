@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     MessageCircle, Search, X, User as UserIcon, MoreVertical, Trash2,
     ArrowLeft, Send, Paperclip, Image as ImageIcon, Loader2, Check, CheckCheck,
-    Minimize2, Maximize2, Settings, Smile, Edit2, FileIcon, MessageSquare, PlusCircle
+    Minimize2, Maximize2, Settings, Smile, Edit2, FileIcon, MessageSquare, PlusCircle,
+    Mic, MicOff, Copy, Reply
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useDarkMode } from '../pages/_app';
@@ -108,10 +109,22 @@ export default function DMFloatingCard({
     const [gifs, setGifs] = useState<any[]>([]);
     const [isLoadingGifs, setIsLoadingGifs] = useState(false);
 
-    // Hover & Edit
+    // Hover & Edit & Menu
     const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editMessageText, setEditMessageText] = useState('');
+    const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+    // DM Message Search
+    const [showDMSearch, setShowDMSearch] = useState(false);
+    const [dmSearchQuery, setDmSearchQuery] = useState('');
+
+    // Voice Recording
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -217,6 +230,61 @@ export default function DMFloatingCard({
         onEditDMMessage(activeChat._id, msgId, editMessageText.trim());
         setEditingMessageId(null);
         setEditMessageText('');
+    };
+
+    const handleCopyText = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setActiveMenuId(null);
+    };
+
+    const startVoiceRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+            setRecordingDuration(0);
+            recordingIntervalRef.current = setInterval(() => setRecordingDuration(prev => prev + 1), 1000);
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+                stream.getTracks().forEach(t => t.stop());
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                if (audioBlob.size > 0 && activeChat) {
+                    // Upload via the file upload handler (treat as file)
+                    const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
+                    onDMFileUpload(activeChat._id, activeChat.otherUser.username, file);
+                }
+                setIsRecording(false);
+                setRecordingDuration(0);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+        } catch (err) {
+            console.error('Mic access denied:', err);
+        }
+    };
+
+    const stopVoiceRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+    };
+
+    const cancelVoiceRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+            mediaRecorderRef.current.stop();
+        }
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        audioChunksRef.current = [];
+        setIsRecording(false);
+        setRecordingDuration(0);
     };
 
     const filteredConversations = conversations.filter((c) =>
@@ -375,37 +443,75 @@ export default function DMFloatingCard({
 
             {/* RIGHT PANEL: Active Chat */}
             {activeChat && (
-                <div className="flex flex-col h-full w-2/3 bg-black/5 dark:bg-white/5 relative">
+                <div className="flex flex-col h-full w-2/3 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
 
                     {/* Chat Header */}
-                    <div className="p-3 border-b flex justify-between items-center bg-white dark:bg-gray-900 shrink-0" style={{ borderColor: 'var(--border-color)' }}>
-                        <div className="flex items-center gap-3 min-w-0 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onViewProfile && onViewProfile(activeChat.otherUser.username)}>
-                            <div className="relative w-8 h-8 shrink-0">
-                                {activeChat.otherUser.avatar ? (
-                                    <img src={activeChat.otherUser.avatar} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-                                ) : (
-                                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs" style={{ backgroundColor: 'var(--accent-color)' }}>
-                                        {activeChat.otherUser.username.charAt(0).toUpperCase()}
+                    <div className="p-3 border-b flex flex-col gap-2 shrink-0" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3 min-w-0 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onViewProfile && onViewProfile(activeChat.otherUser.username)}>
+                                <div className="relative w-8 h-8 shrink-0">
+                                    {activeChat.otherUser.avatar ? (
+                                        <img src={activeChat.otherUser.avatar} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                                    ) : (
+                                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs" style={{ backgroundColor: 'var(--accent-color)' }}>
+                                            {activeChat.otherUser.username.charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2" style={{ backgroundColor: getStatusColor(activeChat.otherUser.status), borderColor: 'var(--bg-primary)' }} />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{activeChat.otherUser.displayName || activeChat.otherUser.username}</div>
+                                    <div className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                                        {activeChat.otherUser.status === 'online' ? 'Active now' : 'Offline'}
                                     </div>
-                                )}
-                                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2" style={{ backgroundColor: getStatusColor(activeChat.otherUser.status), borderColor: 'var(--bg-primary)' }} />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{activeChat.otherUser.displayName || activeChat.otherUser.username}</div>
-                                <div className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                                    {activeChat.otherUser.status === 'online' ? 'Active now' : 'Offline'}
                                 </div>
                             </div>
+                            <div className="flex gap-1">
+                                <button
+                                    className="p-1.5 rounded-lg transition-colors"
+                                    style={{ color: showDMSearch ? 'var(--accent-color)' : 'var(--text-muted)' }}
+                                    onClick={() => { setShowDMSearch(!showDMSearch); setDmSearchQuery(''); }}
+                                    title="Search messages"
+                                >
+                                    <Search className="w-4 h-4" />
+                                </button>
+                                <button
+                                    className="p-1.5 rounded-lg transition-colors"
+                                    style={{ color: 'var(--text-muted)' }}
+                                    onClick={() => { setActiveChat(null); setShowDMSearch(false); setDmSearchQuery(''); }}
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex gap-1">
-                            <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5" onClick={() => setActiveChat(null)}>
-                                <ArrowLeft className="w-4 h-4" />
-                            </button>
-                        </div>
+                        {showDMSearch && (
+                            <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search messages..."
+                                        value={dmSearchQuery}
+                                        onChange={(e) => setDmSearchQuery(e.target.value)}
+                                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg outline-none border"
+                                        style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
+                                        autoFocus
+                                    />
+                                </div>
+                                {dmSearchQuery && (
+                                    <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                                        {dmMessages.filter(m => m.message.toLowerCase().includes(dmSearchQuery.toLowerCase())).length} results
+                                    </span>
+                                )}
+                                <button onClick={() => { setShowDMSearch(false); setDmSearchQuery(''); }} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 relative bg-gray-50 dark:bg-gray-900/50">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                         {dmMessages.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center" style={{ color: 'var(--text-muted)' }}>
                                 <MessageCircle className="w-12 h-12 mb-3 opacity-20" />
@@ -413,16 +519,20 @@ export default function DMFloatingCard({
                                 <p className="text-xs">Say hello to {activeChat.otherUser.username}!</p>
                             </div>
                         ) : (
-                            dmMessages.map((msg, index) => {
+                            (dmSearchQuery
+                                ? dmMessages.filter(m => m.message.toLowerCase().includes(dmSearchQuery.toLowerCase()))
+                                : dmMessages
+                            ).map((msg, index) => {
                                 const isMine = msg.sender === currentUser;
-                                const isHovered = hoveredMessageId === msg._id;
+                                const isHovered = hoveredMessageId === msg._id || activeMenuId === msg._id;
+                                const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
                                 return (
                                     <div
                                         key={msg._id}
                                         className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-full group`}
                                         onMouseEnter={() => setHoveredMessageId(msg._id)}
-                                        onMouseLeave={() => setHoveredMessageId(null)}
+                                        onMouseLeave={() => { if (activeMenuId !== msg._id) setHoveredMessageId(null); }}
                                     >
                                         {/* Username/Time Header */}
                                         <div className="flex items-center gap-2 mb-1 px-1">
@@ -432,24 +542,94 @@ export default function DMFloatingCard({
                                         </div>
 
                                         {/* Message Bubble Wrapper */}
-                                        <div className="relative group max-w-[85%] flex items-center gap-2">
-                                            {/* Hover Actions (Left for Mine, Right for Theirs) */}
-                                            {isHovered && isMine && (
-                                                <div className="flex gap-1 mr-1 shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-0.5 absolute right-full top-0">
-                                                    <button onClick={() => setEditingMessageId(msg._id)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500" title="Edit"><Edit2 className="w-3 h-3" /></button>
-                                                    <button onClick={() => setReplyTo(msg)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500" title="Reply"><MessageSquare className="w-3 h-3" /></button>
-                                                    <button onClick={() => onDeleteDMMessage(activeChat._id, msg._id)} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-900/20 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                                        <div className="relative max-w-[85%] flex items-center gap-1">
+                                            {/* Three-dot menu (left of mine, right of theirs) */}
+                                            {isHovered && (
+                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-0 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }}
+                                                        className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
+                                                        title="More options"
+                                                    >
+                                                        <MoreVertical className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
                                             )}
 
+                                            {/* Dropdown Menu */}
+                                            {activeMenuId === msg._id && (
+                                                <div
+                                                    className={`absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-6 rounded-xl shadow-xl py-1.5 min-w-[160px] z-30 border`}
+                                                    style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {/* Quick Reactions Row */}
+                                                    <div className="px-3 py-2 border-b" style={{ borderColor: 'var(--border-color)' }}>
+                                                        <div className="flex justify-between">
+                                                            {quickReactions.map((emoji) => {
+                                                                const hasReacted = msg.reactions?.some(r => r.emoji === emoji && r.users.includes(currentUser));
+                                                                return (
+                                                                    <button
+                                                                        key={emoji}
+                                                                        onClick={() => { onReactDM(activeChat._id, msg._id, emoji, hasReacted ? 'remove' : 'add'); setActiveMenuId(null); }}
+                                                                        className={`text-base hover:scale-125 transition-transform ${hasReacted ? 'scale-110 opacity-100' : 'opacity-70'}`}
+                                                                    >
+                                                                        {emoji}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => { setReplyTo(msg); setActiveMenuId(null); }}
+                                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                        style={{ color: 'var(--text-primary)' }}
+                                                    >
+                                                        <Reply className="w-4 h-4" /> Reply
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => handleCopyText(msg.message)}
+                                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                        style={{ color: 'var(--text-primary)' }}
+                                                    >
+                                                        <Copy className="w-4 h-4" /> Copy text
+                                                    </button>
+
+                                                    {isMine && msg.messageType === 'text' && (
+                                                        <button
+                                                            onClick={() => { setEditingMessageId(msg._id); setEditMessageText(msg.message); setActiveMenuId(null); }}
+                                                            className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                            style={{ color: 'var(--text-primary)' }}
+                                                        >
+                                                            <Edit2 className="w-4 h-4" /> Edit
+                                                        </button>
+                                                    )}
+
+                                                    {isMine && (
+                                                        <button
+                                                            onClick={() => { onDeleteDMMessage(activeChat._id, msg._id); setActiveMenuId(null); }}
+                                                            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-red-500 transition-colors hover:opacity-80"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" /> Delete
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Message Bubble */}
                                             <div
                                                 className={`rounded-2xl px-3 py-2 text-sm relative break-words shadow-sm ${isMine
                                                     ? 'bg-blue-500 text-white rounded-tr-none'
-                                                    : 'bg-white dark:bg-gray-800 text-gray-900 border dark:border-gray-700 dark:text-gray-100 rounded-tl-none'
+                                                    : 'rounded-tl-none'
                                                     }`}
+                                                style={!isMine ? { backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' } : {}}
                                             >
                                                 {msg.replyToMessage && (
-                                                    <div className={`mb-1.5 p-1.5 rounded text-xs border-l-2 ${isMine ? 'bg-blue-600 border-white text-blue-100' : 'bg-gray-100 border-blue-500 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                                    <div className={`mb-1.5 p-1.5 rounded text-xs border-l-2 ${isMine ? 'bg-blue-600 border-white text-blue-100' : ''}`}
+                                                        style={!isMine ? { backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--accent-color)', color: 'var(--text-secondary)' } : {}}
+                                                    >
                                                         <span className="font-semibold">{msg.replyToMessage.sender}</span>
                                                         <div className="truncate opacity-80 mt-0.5">{msg.replyToMessage.message}</div>
                                                     </div>
@@ -458,9 +638,10 @@ export default function DMFloatingCard({
                                                 {editingMessageId === msg._id ? (
                                                     <div className="flex gap-2">
                                                         <input
-                                                            value={editMessageText || msg.message}
+                                                            value={editMessageText}
                                                             onChange={(e) => setEditMessageText(e.target.value)}
-                                                            className="bg-black/20 text-white rounded px-2 py-1 outline-none text-sm"
+                                                            className="rounded px-2 py-1 outline-none text-sm"
+                                                            style={{ backgroundColor: isMine ? 'rgba(0,0,0,0.2)' : 'var(--bg-secondary)', color: isMine ? 'white' : 'var(--text-primary)' }}
                                                             autoFocus
                                                             onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(msg._id); if (e.key === 'Escape') setEditingMessageId(null); }}
                                                         />
@@ -475,6 +656,12 @@ export default function DMFloatingCard({
                                                             <a href={msg.fileData.url} target="_blank" rel="noopener noreferrer">
                                                                 <img src={msg.fileData.url} alt="Uploaded Image" className="rounded-lg max-w-full h-auto my-1" style={{ maxHeight: '200px' }} />
                                                             </a>
+                                                        ) : (msg.messageType === 'voice' || (msg.messageType === 'file' && msg.fileData?.mimetype?.startsWith('audio/'))) && msg.fileData?.url ? (
+                                                            <div className="flex items-center gap-2 p-1">
+                                                                <audio controls preload="metadata" className="max-w-[200px] h-8" style={{ filter: isMine ? 'invert(1)' : 'none' }}>
+                                                                    <source src={msg.fileData.url} type={msg.fileData.mimetype || 'audio/webm'} />
+                                                                </audio>
+                                                            </div>
                                                         ) : msg.messageType === 'file' && msg.fileData?.url ? (
                                                             <a href={msg.fileData.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 underline">
                                                                 <FileIcon className="w-4 h-4" /> {msg.fileData.originalName}
@@ -489,7 +676,7 @@ export default function DMFloatingCard({
                                                         {msg.reactions && msg.reactions.length > 0 && (
                                                             <div className="flex flex-wrap gap-1 mt-1 -mb-3 pt-1 border-t border-black/10">
                                                                 {msg.reactions.map(r => (
-                                                                    <span key={r.emoji} className="bg-black/20 text-xs px-1 rounded-full cursor-pointer" onClick={() => onReactDM(activeChat._id, msg._id, r.emoji, r.users.includes(currentUser) ? 'remove' : 'add')}>
+                                                                    <span key={r.emoji} className="text-xs px-1 rounded-full cursor-pointer" style={{ backgroundColor: isMine ? 'rgba(0,0,0,0.2)' : 'var(--bg-tertiary)' }} onClick={() => onReactDM(activeChat._id, msg._id, r.emoji, r.users.includes(currentUser) ? 'remove' : 'add')}>
                                                                         {r.emoji} {r.users.length > 1 && <span className="text-[10px] ml-0.5">{r.users.length}</span>}
                                                                     </span>
                                                                 ))}
@@ -498,14 +685,6 @@ export default function DMFloatingCard({
                                                     </>
                                                 )}
                                             </div>
-
-                                            {isHovered && !isMine && (
-                                                <div className="flex gap-1 ml-1 shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-0.5 absolute left-full top-0">
-                                                    <button onClick={() => onReactDM(activeChat._id, msg._id, '👍', 'add')} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="React Thumb">👍</button>
-                                                    <button onClick={() => onReactDM(activeChat._id, msg._id, '❤️', 'add')} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="React Heart">❤️</button>
-                                                    <button onClick={() => setReplyTo(msg)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500" title="Reply"><MessageSquare className="w-3 h-3" /></button>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 );
@@ -522,8 +701,8 @@ export default function DMFloatingCard({
                     )}
 
                     {showGifPicker && (
-                        <div className="absolute bottom-[60px] left-2 z-50 shadow-2xl rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2 w-[300px] h-[350px] flex flex-col">
-                            <input type="text" placeholder="Search Tenor GIFs..." value={gifSearch} onChange={e => { setGifSearch(e.target.value); searchTenorGifs(e.target.value); }} className="w-full p-2 text-sm border rounded mb-2 bg-gray-50 dark:bg-gray-800" />
+                        <div className="absolute bottom-[60px] left-2 z-50 shadow-2xl rounded-xl p-2 w-[300px] h-[350px] flex flex-col border" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                            <input type="text" placeholder="Search Tenor GIFs..." value={gifSearch} onChange={e => { setGifSearch(e.target.value); searchTenorGifs(e.target.value); }} className="w-full p-2 text-sm rounded mb-2 border outline-none" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }} />
                             <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-1 content-start">
                                 {isLoadingGifs ? <div className="col-span-2 flex justify-center py-4"><Loader2 className="animate-spin" /></div> : gifs.map((g, i) => (
                                     <img key={i} src={g.media_formats?.tinygif?.url} onClick={() => handleSendGif(g)} className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-80" alt="gif" />
@@ -533,52 +712,77 @@ export default function DMFloatingCard({
                     )}
 
                     {/* Input Area */}
-                    <div className="p-3 bg-white dark:bg-gray-900 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="p-3 border-t" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
                         {replyTo && (
-                            <div className="flex justify-between items-center mb-2 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 rounded-lg border-l-2 border-blue-500">
-                                <div className="truncate">Replying to <span className="font-semibold">{replyTo.sender}</span>: {replyTo.message}</div>
-                                <button onClick={() => setReplyTo(null)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><X className="w-3 h-3" /></button>
+                            <div className="flex justify-between items-center mb-2 px-2 py-1 text-xs rounded-lg border-l-2 border-blue-500" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                                <div className="truncate" style={{ color: 'var(--text-primary)' }}>Replying to <span className="font-semibold">{replyTo.sender}</span>: {replyTo.message}</div>
+                                <button onClick={() => setReplyTo(null)} className="p-1 rounded hover:opacity-70"><X className="w-3 h-3" /></button>
                             </div>
                         )}
-                        <div className="flex items-center gap-2">
-                            <button
-                                className="p-1.5 text-gray-500 hover:text-blue-500 transition-colors"
-                                onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
-                            >
-                                <Smile className="w-5 h-5" />
-                            </button>
-                            <button
-                                className="p-1.5 text-gray-500 hover:text-blue-500 transition-colors"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <Paperclip className="w-5 h-5" />
-                            </button>
-                            <button
-                                className="p-1 text-gray-500 hover:text-blue-500 font-bold font-mono border rounded px-1 min-w-[32px] text-center"
-                                onClick={() => { setShowGifPicker(!showGifPicker); setShowEmojiPicker(false); searchTenorGifs(''); }}
-                            >
-                                GIF
-                            </button>
 
-                            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+                        {/* Voice Recording UI */}
+                        {isRecording ? (
+                            <div className="flex items-center gap-3 py-1">
+                                <div className="flex items-center gap-2 flex-1">
+                                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Recording... {recordingDuration}s</span>
+                                </div>
+                                <button onClick={cancelVoiceRecording} className="p-2 rounded-full hover:opacity-80" style={{ color: 'var(--text-muted)' }} title="Cancel">
+                                    <X className="w-5 h-5" />
+                                </button>
+                                <button onClick={stopVoiceRecording} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="Send Voice">
+                                    <Send className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                    onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
+                                >
+                                    <Smile className="w-5 h-5" />
+                                </button>
+                                <button
+                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <Paperclip className="w-5 h-5" />
+                                </button>
+                                <button
+                                    className="p-1 font-bold font-mono border rounded px-1 min-w-[32px] text-center text-xs" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
+                                    onClick={() => { setShowGifPicker(!showGifPicker); setShowEmojiPicker(false); searchTenorGifs(''); }}
+                                >
+                                    GIF
+                                </button>
+                                <button
+                                    className="p-1.5 transition-colors" style={{ color: 'var(--text-muted)' }}
+                                    onClick={startVoiceRecording}
+                                    title="Voice Message"
+                                >
+                                    <Mic className="w-5 h-5" />
+                                </button>
 
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                placeholder="Message..."
-                                value={messageText}
-                                onChange={(e) => setMessageText(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                className="flex-1 bg-gray-100 dark:bg-gray-800 border-0 rounded-full px-4 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
-                            />
-                            <button
-                                onClick={handleSend}
-                                disabled={!messageText.trim() && !fileInputRef.current?.value}
-                                className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 -ml-0.5 mt-0.5" />}
-                            </button>
-                        </div>
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    placeholder="Message..."
+                                    value={messageText}
+                                    onChange={(e) => setMessageText(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                    className="flex-1 rounded-full px-4 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none border"
+                                    style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={!messageText.trim() && !fileInputRef.current?.value}
+                                    className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 -ml-0.5 mt-0.5" />}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                 </div>
