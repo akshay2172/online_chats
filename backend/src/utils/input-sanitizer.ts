@@ -28,10 +28,10 @@ export class InputSanitizer {
 
     // Remove HTML
     let sanitized = this.sanitizeHtml(message);
-    
+
     // Trim whitespace
     sanitized = sanitized.trim();
-    
+
     // Check length
     if (sanitized.length === 0) {
       throw new Error('Message cannot be empty');
@@ -40,7 +40,7 @@ export class InputSanitizer {
     if (sanitized.length > 5000) {
       throw new Error('Message too long (max 5000 characters)');
     }
-    
+
     // Check for null bytes
     if (sanitized.includes('\0')) {
       throw new Error('Invalid characters in message');
@@ -96,7 +96,7 @@ export class InputSanitizer {
 
     // Normalize email (remove dots in Gmail, etc.)
     const normalized = validator.normalizeEmail(email);
-    
+
     return normalized || email;
   }
 
@@ -130,10 +130,10 @@ export class InputSanitizer {
     // Remove path traversal attempts
     fileName = fileName.replace(/\.\./g, '');
     fileName = fileName.replace(/[\/\\]/g, '');
-    
+
     // Remove special characters except dots, hyphens, underscores
     fileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    
+
     // Limit length
     if (fileName.length > 255) {
       const parts = fileName.split('.');
@@ -159,16 +159,16 @@ export class InputSanitizer {
     const injectionPatterns = [
       // MongoDB injection
       /(\$where|\$ne|\$gt|\$gte|\$lt|\$lte|\$or|\$and|\$in|\$nin)/i,
-      
+
       // SQL injection
       /(union|select|insert|update|delete|drop|create|alter|exec|execute|script)/i,
-      
+
       // XSS patterns
       /(<script|javascript:|onerror=|onload=|onclick=|onmouseover=|onfocus=|onblur=)/i,
-      
+
       // Command injection
       /(;|\||&|`|\$\(|<\(|>\()/,
-      
+
       // LDAP injection
       /(\*|\(|\)|&|\|)/,
     ];
@@ -212,10 +212,10 @@ export class InputSanitizer {
 
     // Remove HTML
     let sanitized = this.sanitizeHtml(bio);
-    
+
     // Trim
     sanitized = sanitized.trim();
-    
+
     // Limit length
     if (sanitized.length > 500) {
       throw new Error('Bio too long (max 500 characters)');
@@ -232,17 +232,18 @@ export class InputSanitizer {
 
     // Remove HTML
     let sanitized = this.sanitizeHtml(query);
-    
+
     // Trim
     sanitized = sanitized.trim();
-    
+
     // Limit length
     if (sanitized.length > 100) {
       throw new Error('Search query too long (max 100 characters)');
     }
 
-    // Remove MongoDB operators
+    // Remove MongoDB operators (but allow colons for filters)
     sanitized = sanitized.replace(/\$/g, '');
+
 
     return sanitized;
   }
@@ -268,7 +269,7 @@ export class InputSanitizer {
     }
 
     const normalized = gender.toLowerCase().trim();
-    
+
     if (normalized === 'male' || normalized === 'female') {
       return normalized as 'male' | 'female';
     }
@@ -284,15 +285,15 @@ export class InputSanitizer {
 
     // Remove HTML tags
     let sanitized = this.sanitizeHtml(input);
-    
+
     // Trim whitespace
     sanitized = sanitized.trim();
-    
+
     // Limit length
     if (sanitized.length > maxLength) {
       sanitized = sanitized.substring(0, maxLength);
     }
-    
+
     // Check for null bytes
     if (sanitized.includes('\0')) {
       sanitized = sanitized.replace(/\0/g, '');
@@ -366,7 +367,7 @@ export class ContentModerator {
     }
 
     const lowerText = text.toLowerCase();
-    
+
     // Check for exact matches and word boundaries
     return Array.from(this.profanityList).some(word => {
       const regex = new RegExp(`\\b${word}\\b`, 'i');
@@ -472,7 +473,7 @@ export class ContentModerator {
 
     this.messageHistory.forEach((history, userId) => {
       const recent = history.filter(msg => now - msg.timestamp < maxAge);
-      
+
       if (recent.length === 0) {
         this.messageHistory.delete(userId);
       } else {

@@ -8,7 +8,8 @@ import UserList from '../../components/UserList';
 import UserToast from '../../components/UserToast';
 import TypingIndicator from '../../components/TypingIndicator';
 import SearchPanel from '../../components/SearchPanel';
-import { Search, X, Users, Menu, MessageCircle } from 'lucide-react';
+import { Search, X, Users, Menu, MessageCircle, Filter } from 'lucide-react';
+
 import SidebarMenu from '../../components/SidebarMenu';
 import DMFloatingCard from '../../components/DMFloatingCard';
 import { SearchMessage, SearchFilters } from '../../components/SearchPanel';
@@ -798,41 +799,109 @@ export default function Room() {
                 onInviteToRoom={handleInviteToRoom}
             />
 
-            <div className="flex gap-4 p-5 h-screen bg-gray-100 dark:bg-gray-900">
-                <div className="flex flex-col min-w-0 bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 relative" style={{ flex: 1 }}>
+            <div className="flex gap-4 p-5 h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="flex flex-col min-w-0 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 relative" style={{ flex: 1, backgroundColor: 'var(--bg-primary)' }}>
+
                     {/* Header */}
-                    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 z-10">
+                    <div className="px-6 py-4 z-10 border-b flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3 flex-1">
-                                <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg relative transition-colors mr-2">
-                                    <Menu className="w-6 h-6 dark:text-white" />
+                            <div className="flex items-center space-x-3 flex-1 overflow-hidden">
+                                <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg relative transition-colors mr-2 group shrink-0" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                                    <Menu className="w-6 h-6" style={{ color: 'var(--text-primary)' }} />
                                     {unreadCount > 0 && <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center transform scale-90 translate-x-1 -translate-y-1">{unreadCount}</span>}
                                 </button>
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 shadow-sm">
                                     {typeof id === 'string' ? id.charAt(0).toUpperCase() : 'R'}
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white capitalize">{id}</h2>
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">{messages.length} messages</span>
+                                <div className="min-w-0">
+                                    <h2 className="text-lg font-bold truncate capitalize" style={{ color: 'var(--text-primary)' }}>{id}</h2>
+                                    <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{messages.length} messages</span>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <button
-                                    onClick={() => setShowSearch(!showSearch)}
-                                    className={`p-2 rounded-full transition-all ${showSearch ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
-                                >
-                                    <Search className="w-5 h-5" />
-                                </button>
+                            <div className="flex items-center gap-3">
+                                {/* Search Component */}
+                                <div className="relative group hidden sm:block">
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="text"
+                                            placeholder="Search messages..."
+                                            className="w-48 md:w-64 pl-9 pr-4 py-2 rounded-xl text-sm border outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+                                            style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                            value={searchQuery}
+                                            onChange={(e) => {
+                                                setSearchQuery(e.target.value);
+                                                if (e.target.value.length > 2) {
+                                                    handleSearchMessages(e.target.value, {});
+                                                }
+                                            }}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSearchMessages(searchQuery, {})}
+                                        />
+                                        <Search className="w-4 h-4 absolute left-3" style={{ color: 'var(--text-muted)' }} />
 
-                                <div className="text-sm border-l border-gray-200 dark:border-gray-700 pl-4 hidden md:block">
-                                    <span className="text-gray-500 dark:text-gray-400">Logged in as</span>
-                                    <span className="ml-2 font-medium text-gray-700 dark:text-gray-200">{localQuery?.displayName || activeUsername}</span>
+                                        {/* Dropdown Results */}
+                                        {searchQuery && (
+                                            <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                {isSearching ? (
+                                                    <div className="p-8 text-center flex flex-col items-center gap-3">
+                                                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Searching Archive...</span>
+                                                    </div>
+                                                ) : searchResults.length > 0 ? (
+                                                    <div className="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
+                                                        <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{searchResults.length} Results</div>
+                                                        {searchResults.map((msg: any) => (
+                                                            <div
+                                                                key={msg._id}
+                                                                className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer border-b last:border-0 transition-colors group/result"
+                                                                style={{ borderColor: 'var(--border-color)' }}
+                                                                onClick={() => {
+                                                                    window.dispatchEvent(new CustomEvent('jumpToMessage', { detail: msg._id }));
+                                                                    setSearchQuery('');
+                                                                    setSearchResults([]);
+                                                                }}
+                                                            >
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-xs font-bold text-blue-500 truncate">{msg.sender}</span>
+                                                                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                                                                        {new Date(msg.createdAt).toLocaleDateString()}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-sm line-clamp-2 leading-relaxed" style={{ color: 'var(--text-primary)' }}>{msg.message}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-10 text-center flex flex-col items-center gap-3">
+                                                        <div className="w-12 h-12 bg-gray-50 dark:bg-gray-700/50 rounded-full flex items-center justify-center">
+                                                            <Search className="w-6 h-6" style={{ color: 'var(--text-muted)' }} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>No messages found</p>
+                                                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Try a different keyword</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <button onClick={() => setShowUserList(!showUserList)} className={`p-2 rounded-full transition-all relative ${showUserList ? 'bg-blue-500 text-white hover:bg-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                                <button
+                                    onClick={() => setShowSearch(!showSearch)}
+                                    className={`p-2 rounded-xl transition-all shadow-sm ${showSearch ? 'bg-blue-500 text-white shadow-blue-500/20' : 'hover:opacity-80'}`}
+                                    style={{ backgroundColor: !showSearch ? 'var(--bg-secondary)' : undefined, color: !showSearch ? 'var(--text-secondary)' : undefined }}
+                                >
+                                    <Filter className="w-5 h-5" />
+                                </button>
+
+                                <div className="text-sm border-l pl-4 hidden lg:block" style={{ borderColor: 'var(--border-color)' }}>
+                                    <span className="font-medium" style={{ color: 'var(--text-muted)' }}>{localQuery?.displayName || activeUsername}</span>
+                                </div>
+
+                                <button onClick={() => setShowUserList(!showUserList)} className={`p-2 rounded-xl transition-all relative shadow-sm ${showUserList ? 'bg-blue-500 text-white shadow-blue-500/20 hover:bg-blue-600' : 'hover:opacity-80'}`} style={{ backgroundColor: !showUserList ? 'var(--bg-secondary)' : undefined, color: !showUserList ? 'var(--text-secondary)' : undefined }}>
                                     <Users className="w-5 h-5" />
-                                    {users.length > 0 && <span className={`absolute -top-1 -right-1 text-xs rounded-full w-5 h-5 flex items-center justify-center ${showUserList ? 'bg-white text-blue-500' : 'bg-blue-500 text-white'}`}>{users.length}</span>}
+                                    {users.length > 0 && <span className={`absolute -top-1.5 -right-1.5 text-[10px] font-bold rounded-lg px-1.5 py-0.5 border-2 ${showUserList ? 'bg-white text-blue-500 border-blue-500' : 'bg-blue-500 text-white border-white dark:border-gray-800'}`}>{users.length}</span>}
                                 </button>
                             </div>
                         </div>

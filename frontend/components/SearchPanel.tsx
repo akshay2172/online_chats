@@ -165,40 +165,44 @@ export default function SearchPanel({
     if (!isOpen) return null;
 
     return (
-        <div className="absolute right-0 top-0 bottom-0 w-[400px] flex flex-col bg-white dark:bg-gray-900 shadow-2xl border-l dark:border-gray-800 z-40 transition-all animate-in slide-in-from-right">
+        <div className="absolute right-0 top-0 bottom-0 w-[400px] flex flex-col shadow-2xl border-l z-40 transition-all animate-in slide-in-from-right" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
             {/* Header */}
-            <div className="p-4 border-b dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
-                <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
-                    <Search className="w-5 h-5 text-blue-500" />
-                    Search
+            <div className="p-4 border-b flex items-center justify-between" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                    <Filter className="w-5 h-5 text-blue-500" />
+                    Advanced Filters
                 </h3>
                 <button
                     onClick={onClose}
-                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full dark:text-gray-400"
+                    className="p-1 rounded-full transition-colors hover:opacity-80"
+                    style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
                 >
                     <X className="w-6 h-6" />
                 </button>
             </div>
+
 
             {/* Search Bar & Filters */}
             <div className="p-4 space-y-4 shadow-sm">
                 <div className="relative">
                     <input
                         type="text"
-                        placeholder="Search messages..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-800 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all border dark:border-gray-700"
+                        placeholder="Filter messages..."
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all border font-medium"
+                        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     />
-                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
                     <button
                         onClick={handleSearch}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20"
                     >
                         <ArrowRight className="w-4 h-4" />
                     </button>
                 </div>
+
 
                 {/* Filter Selection Chips */}
                 <div className="flex flex-wrap gap-2 relative" ref={filterMenuRef}>
@@ -206,12 +210,18 @@ export default function SearchPanel({
                         <div key={type} className="relative">
                             <button
                                 onClick={() => toggleFilter(type)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${activeFilterType === type
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border transition-all ${activeFilterType === type
                                     ? 'bg-blue-500 border-blue-500 text-white shadow-md'
                                     : filters[type]
                                         ? 'bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300'
-                                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                                        : 'hover:opacity-80'
                                     }`}
+                                style={{ 
+                                    backgroundColor: activeFilterType !== type && !filters[type] ? 'var(--bg-secondary)' : undefined,
+                                    borderColor: activeFilterType !== type && !filters[type] ? 'var(--border-color)' : undefined,
+                                    color: activeFilterType !== type && !filters[type] ? 'var(--text-secondary)' : undefined
+                                }}
+
                             >
                                 {type}:
                                 {filters[type] && <span className="opacity-80 font-normal">{filters[type]}</span>}
@@ -243,16 +253,20 @@ export default function SearchPanel({
                         {results.map((msg) => (
                             <div
                                 key={msg._id}
-                                className="p-4 border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group cursor-pointer transition-colors"
+                                className="p-4 border-b group cursor-pointer transition-colors"
+                                style={{ borderColor: 'var(--border-color)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 onClick={() => onJumpToMessage(msg._id)}
                             >
                                 <div className="flex items-center justify-between mb-1.5">
-                                    <span className="font-bold text-sm dark:text-white text-blue-600 dark:text-blue-400">{msg.sender}</span>
-                                    <span className="text-[10px] text-gray-400 font-medium">{formatDate(msg.createdAt || msg.timestamp || '')}</span>
+                                    <span className="font-bold text-sm text-blue-600 dark:text-blue-400">{msg.sender}</span>
+                                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formatDate(msg.createdAt || msg.timestamp || '')}</span>
                                 </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 leading-relaxed">
+                                <p className="text-sm line-clamp-3 leading-relaxed" style={{ color: 'var(--text-primary)' }}>
                                     {highlightMatch(msg.message, query)}
                                 </p>
+
                                 <div className="flex items-center gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button className="text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-tight hover:underline">
                                         Jump to message

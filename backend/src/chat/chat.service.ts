@@ -507,8 +507,16 @@ export class ChatService {
     const conditions: any[] = [{ room }, { isDeleted: false }];
 
     // Text query (optional - can search with only filters)  
-    if (query) {
-      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Text query (optional - can search with only filters)  
+    let modifiedQuery = query;
+    if (query.toLowerCase().includes('has:link')) {
+      if (!filters) filters = {};
+      filters.has = 'link';
+      modifiedQuery = query.replace(/has:link/gi, '').trim();
+    }
+
+    if (modifiedQuery) {
+      const escapedQuery = modifiedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       conditions.push({
         $or: [
           { message: { $regex: escapedQuery, $options: 'i' } },
@@ -516,6 +524,7 @@ export class ChatService {
         ],
       });
     }
+
 
     // Filters  
     if (filters) {
