@@ -58,6 +58,8 @@ export default function ProfileCard({
     const [previewCover, setPreviewCover] = useState<string | null>(null);
     const [showOptionsPopup, setShowOptionsPopup] = useState(false);
     const [profileBlocked, setProfileBlocked] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -177,11 +179,46 @@ export default function ProfileCard({
             displayName: editDisplayName,
             age: editAge !== '' ? Number(editAge) : null
         };
-        onUpdateProfile(updates);
-        setIsEditing(false);
+
+        setIsSaving(true);
         // Optimistic update
+        const previousProfile = profile;
         setProfile(prev => prev ? { ...prev, ...updates, age: updates.age ?? prev.age } : prev);
+
+        onUpdateProfile(updates);
+
+        // Listen for results
+        const handleSuccess = (updatedUser: any) => {
+            if (updatedUser.username === username) {
+                setIsSaving(false);
+                setIsEditing(false);
+                setProfile(prev => prev ? { ...prev, ...updatedUser } : updatedUser);
+                cleanup();
+            }
+        };
+
+        const handleError = (err: any) => {
+            setIsSaving(false);
+            // Rollback optimistic update
+            setProfile(previousProfile);
+            cleanup();
+        };
+
+        const cleanup = () => {
+            socket.off('profileUpdateSuccess', handleSuccess);
+            socket.off('error', handleError);
+        };
+
+        socket.on('profileUpdateSuccess', handleSuccess);
+        socket.on('error', handleError);
+
+        // Safety timeout to prevent stuck loading
+        setTimeout(() => {
+            setIsSaving(false);
+            cleanup();
+        }, 8000);
     };
+
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -477,19 +514,23 @@ export default function ProfileCard({
                         <div className="flex gap-2 pt-1">
                             <button
                                 onClick={handleSave}
-                                className="flex-1 py-2.5 rounded-lg flex items-center justify-center gap-1.5 text-sm font-semibold text-white transition-all hover:opacity-90"
+                                disabled={isSaving}
+                                className="flex-1 py-2.5 rounded-lg flex items-center justify-center gap-1.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
                                 style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}
                             >
-                                <Check className="w-4 h-4" /> Save Changes
+                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                {isSaving ? 'Saving...' : 'Save Changes'}
                             </button>
                             <button
                                 onClick={() => setIsEditing(false)}
-                                className="flex-1 py-2.5 rounded-lg flex items-center justify-center gap-1.5 text-sm font-semibold transition-all hover:opacity-90"
+                                disabled={isSaving}
+                                className="flex-1 py-2.5 rounded-lg flex items-center justify-center gap-1.5 text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
                                 style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
                             >
                                 <X className="w-4 h-4" /> Cancel
                             </button>
                         </div>
+
                     </div>
                 ) : (
                     displayProfile.bio ? (

@@ -93,6 +93,8 @@ export default function Room() {
     // Friends State
     const [friends, setFriends] = useState<any[]>([]);
     const [friendRequests, setFriendRequests] = useState<any[]>([]);
+    const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+
 
     const currentUserData = users.find(u => u.name === activeUsername);
     const currentUserRole = currentUserData?.role || 'member';
@@ -415,14 +417,26 @@ export default function Room() {
             ));
         });
 
-        // Friend events
+        // Friends events
         socket.on('friendsList', (list: any[]) => setFriends(list));
         socket.on('friendRequestsList', (list: any[]) => setFriendRequests(list));
         socket.on('friendRequestSent', () => addToast('Friend request sent!'));
         socket.on('friendRequestAccepted', (data: any) => addToast(`${data.friend} accepted your friend request!`));
         socket.on('friendRemoved', (data: any) => addToast(`${data.friendUsername} removed from friends.`));
 
+        // Block events
+        socket.on('userBlocked', (data: any) => {
+            setBlockedUsers(prev => [...prev, data.username]);
+        });
+        socket.on('userUnblocked', (data: any) => {
+            setBlockedUsers(prev => prev.filter(u => u !== data.username));
+            setDmBlockedInfo(prev =>
+                prev && prev.targetUsername === data.username ? null : prev
+            );
+        });
+
         // Avatar update
+
         socket.on('avatarUpdated', (data: any) => {
             if (data.avatarUrl) {
                 localStorage.setItem('avatar', data.avatarUrl);
@@ -491,7 +505,10 @@ export default function Room() {
             socket.off('dmMessageDeleted');
             socket.off('dmMessageEdited');
             socket.off('dmBlocked');
+            socket.off('userBlocked');
+            socket.off('userUnblocked');
             clearTimeout(initTimer);
+
         };
     }, [id]);
 
@@ -795,9 +812,12 @@ export default function Room() {
                 onRespondFriendRequest={handleRespondFriendRequest}
                 onRemoveFriend={handleRemoveFriend}
                 onBlockUser={handleBlockUser}
+                onUnblockUser={handleUnblockUser}
                 onReportProfile={handleReportUser}
                 onInviteToRoom={handleInviteToRoom}
+                blockedUsers={blockedUsers}
             />
+
 
             <div className="flex gap-4 p-5 h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                 <div className="flex flex-col min-w-0 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 relative" style={{ flex: 1, backgroundColor: 'var(--bg-primary)' }}>
