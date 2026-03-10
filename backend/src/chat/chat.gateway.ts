@@ -666,7 +666,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('searchMessages')
   async handleSearchMessages(
-    @MessageBody() data: any,
+    @MessageBody() data: {
+      room: string;
+      query: string;
+      filters?: {
+        from?: string;
+        has?: string;
+        before?: string;
+        after?: string;
+        mentions?: string;
+      };
+      username?: string; // fallback
+    },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -677,10 +688,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       // Sanitize search query
-      const query = InputSanitizer.sanitizeSearchQuery(data.query);
+      const query = InputSanitizer.sanitizeSearchQuery(data.query || '');
 
       // Detect injection in query
-      if (InputSanitizer.detectInjection(query)) {
+      if (query && InputSanitizer.detectInjection(query)) {
         client.emit('error', { message: 'Invalid search query' });
         SecurityLogger.logInjectionAttempt(
           username,
@@ -691,7 +702,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      const results = await this.chatService.searchMessages(data.room, query, 50);
+      const results = await this.chatService.searchMessages(data.room, query, 50, data.filters);
       client.emit('searchResults', results);
     } catch (error) {
       SecurityLogger.logError(error, { event: 'searchMessages', user: client.data.user?.username });

@@ -277,6 +277,36 @@ const ChatWindow: React.FC<Props> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const formatDateSeparator = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isSameDay = (d1: Date, d2: Date) =>
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate();
+
+    if (isSameDay(date, today)) return 'Today';
+    if (isSameDay(date, yesterday)) return 'Yesterday';
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  const shouldShowDateSeparator = (currentMsg: Message, prevMsg?: Message): boolean => {
+    const currentDate = currentMsg.createdAt || currentMsg.timestamp;
+    const prevDate = prevMsg?.createdAt || prevMsg?.timestamp;
+    if (!currentDate) return false;
+    if (!prevDate) return true;
+
+    const d1 = new Date(currentDate);
+    const d2 = new Date(prevDate);
+    return d1.getFullYear() !== d2.getFullYear() ||
+      d1.getMonth() !== d2.getMonth() ||
+      d1.getDate() !== d2.getDate();
+  };
+
   const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
   const hasUserReacted = (msg: Message, emoji: string): boolean => {
@@ -601,7 +631,7 @@ const ChatWindow: React.FC<Props> = ({
             <p className="text-sm">No messages yet</p>
           </div>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, index) => {
             const isMe = msg.sender === currentUser;
             const msgId = getMessageId(msg);
             const showActions = hoveredMessage === msgId || activeMenu === msgId || activeEmojiPicker === msgId;
@@ -610,9 +640,27 @@ const ChatWindow: React.FC<Props> = ({
             const isHighlighted = msgId === highlightedMessageId || msgId === tempHighlight;
             const userStatus = getUserStatus(msg.sender);
             const userAvatar = getUserAvatar(msg.sender);
+            const prevMsg = index > 0 ? messages[index - 1] : undefined;
+
 
             return (
               <React.Fragment key={msgId}>
+                {/* Date Separator */}
+                {shouldShowDateSeparator(msg, index > 0 ? messages[index - 1] : undefined) && (
+                  <div className="flex items-center gap-4 my-6">
+                    <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }}></div>
+                    <span
+                      className="text-xs font-semibold px-3 py-1 rounded-full select-none"
+                      style={{
+                        backgroundColor: 'var(--bg-tertiary)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      {formatDateSeparator(msg.createdAt || msg.timestamp)}
+                    </span>
+                    <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }}></div>
+                  </div>
+                )}
                 {/* Unread Messages Divider */}
                 {isUnreadStart && (
                   <div className="flex items-center gap-3 my-4">

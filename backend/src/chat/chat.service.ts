@@ -492,17 +492,70 @@ export class ChatService {
   }
 
   // Search Messages
-  async searchMessages(room: string, query: string, limit: number = 50): Promise<MessageDocument[]> {
-    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return await this.messageModel
-      .find({
-        room,
-        isDeleted: false,
+  async searchMessages(
+    room: string,
+    query: string,
+    limit: number = 50,
+    filters?: {
+      from?: string;
+      has?: string;
+      before?: string;
+      after?: string;
+      mentions?: string;
+    }
+  ): Promise<MessageDocument[]> {
+    const conditions: any[] = [{ room }, { isDeleted: false }];
+
+    // Text query (optional - can search with only filters)  
+    if (query) {
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      conditions.push({
         $or: [
           { message: { $regex: escapedQuery, $options: 'i' } },
           { sender: { $regex: escapedQuery, $options: 'i' } },
         ],
-      })
+      });
+    }
+
+    // Filters  
+    if (filters) {
+      if (filters.from) {
+        const escapedFrom = filters.from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        conditions.push({ sender: { $regex: `^${escapedFrom}$`, $options: 'i' } });
+      }
+      if (filters.has) {
+        switch (filters.has) {
+          case 'image':
+            conditions.push({ messageType: 'image' });
+            break;
+          case 'file':
+            conditions.push({ messageType: 'file' });
+            break;
+          case 'gif':
+            conditions.push({ messageType: 'gif' });
+            break;
+          case 'voice':
+            conditions.push({ messageType: 'voice' });
+            break;
+          case 'link':
+            conditions.push({ message: { $regex: 'https?://', $options: 'i' } });
+            break;
+        }
+      }
+      if (filters.before) {
+        conditions.push({ createdAt: { $lt: new Date(filters.before) } });
+      }
+      if (filters.after) {
+        conditions.push({ createdAt: { $gt: new Date(filters.after) } });
+      }
+      if (filters.mentions) {
+        const escapedMention = filters.mentions.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        conditions.push({ mentions: { $regex: `^${escapedMention}$`, $options: 'i' } });
+      }
+    }
+
+    return await this.messageModel
+      .find({ $and: conditions })
       .sort({ createdAt: -1 })
       .limit(limit)
       .exec();

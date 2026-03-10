@@ -7,9 +7,11 @@ import MessageInput from '../../components/MessageInput';
 import UserList from '../../components/UserList';
 import UserToast from '../../components/UserToast';
 import TypingIndicator from '../../components/TypingIndicator';
+import SearchPanel from '../../components/SearchPanel';
 import { Search, X, Users, Menu, MessageCircle } from 'lucide-react';
 import SidebarMenu from '../../components/SidebarMenu';
 import DMFloatingCard from '../../components/DMFloatingCard';
+import { SearchMessage, SearchFilters } from '../../components/SearchPanel';
 
 interface User {
     name: string;
@@ -59,9 +61,10 @@ export default function Room() {
     const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
     const [isInitializing, setIsInitializing] = useState(true);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [searchResults, setSearchResults] = useState<Message[]>([]);
+    const [searchResults, setSearchResults] = useState<SearchMessage[]>([]);
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
     const [unreadMessageId, setUnreadMessageId] = useState<string | null>(null);
     const [showUserList, setShowUserList] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -286,7 +289,18 @@ export default function Room() {
 
         socket.on('updateUsers', setUsers);
         socket.on('roomsList', setRooms);
-        socket.on('searchResults', setSearchResults);
+        socket.on('searchResults', (results: any[]) => {
+            // Map to the format expected by SearchPanel if necessary
+            // The SearchPanel expects { _id, sender, message, createdAt }
+            const mappedResults = results.map(msg => ({
+                _id: msg._id || msg.id,
+                sender: msg.sender,
+                message: msg.message,
+                createdAt: msg.createdAt || msg.timestamp || new Date().toISOString()
+            }));
+            setSearchResults(mappedResults as any);
+            setIsSearching(false);
+        });
 
         // ... (standard UI handlers) ...
         socket.on('messageEdited', (updated) => setMessages(prev => prev.map(m => m._id === updated._id ? { ...m, message: updated.message, isEdited: true, editedAt: updated.editedAt } : m)));
@@ -566,6 +580,11 @@ export default function Room() {
         socket.emit('reactMessage', { room: id, messageId, emoji, username: activeUsername, action });
     }, [id, activeUsername]);
 
+    const handleSearchMessages = useCallback((query: string, filters: SearchFilters) => {
+        setIsSearching(true);
+        socket.emit('searchMessages', { room: id, query, filters });
+    }, [id]);
+
     // DM Handlers
     const handleStartDM = useCallback((targetUsername: string) => {
         socket.emit('startDM', { targetUsername, username: activeUsername });
@@ -799,15 +818,12 @@ export default function Room() {
                             </div>
 
                             <div className="flex items-center gap-4">
-                                {showSearch ? (
-                                    <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
-                                        <Search className="w-4 h-4 text-gray-400" />
-                                        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && socket.emit('searchMessages', { room: id, query: searchQuery.trim() })} placeholder="Search..." className="bg-transparent outline-none text-sm w-48 dark:text-white" autoFocus />
-                                        <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="hover:bg-gray-200 dark:hover:bg-gray-600 rounded p-1"><X className="w-4 h-4" /></button>
-                                    </div>
-                                ) : (
-                                    <button onClick={() => setShowSearch(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><Search className="w-5 h-5 text-gray-600 dark:text-gray-300" /></button>
-                                )}
+                                <button
+                                    onClick={() => setShowSearch(!showSearch)}
+                                    className={`p-2 rounded-full transition-all ${showSearch ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                                >
+                                    <Search className="w-5 h-5" />
+                                </button>
 
                                 <div className="text-sm border-l border-gray-200 dark:border-gray-700 pl-4 hidden md:block">
                                     <span className="text-gray-500 dark:text-gray-400">Logged in as</span>
@@ -843,6 +859,21 @@ export default function Room() {
                         onlineUsers={users.filter(u => u.isActive).map(u => u.name)}
                         unreadMessageId={unreadMessageId}
                     />
+
+                    {showSearch && (
+                        <SearchPanel
+                            isOpen={showSearch}
+                            onClose={() => { setShowSearch(false); setSearchResults([]); }}
+                            results={searchResults}
+                            onSearch={handleSearchMessages}
+                            onJumpToMessage={(msgId) => {
+                                setShowSearch(false);
+                                window.dispatchEvent(new CustomEvent('jumpToMessage', { detail: msgId }));
+                            }}
+                            users={users.map(u => ({ name: u.name, displayName: u.displayName, avatar: u.avatar }))}
+                            isLoading={isSearching}
+                        />
+                    )}
 
                     <TypingIndicator users={typingUsers} />
 
