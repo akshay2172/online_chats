@@ -302,22 +302,8 @@ export default function DMFloatingCard({
         )
     );
 
-    if (!isOpen) {
-        if (dmUnreadTotal > 0) {
-            return (
-                <button
-                    onClick={() => { setIsMinimized(false); onClose(); /* triggers parent open */ }}
-                    className="fixed bottom-6 right-6 p-4 rounded-full bg-blue-500 text-white shadow-xl hover:bg-blue-600 transition-all z-50 flex items-center justify-center cursor-pointer"
-                >
-                    <MessageCircle className="w-6 h-6" />
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-gray-900">
-                        {dmUnreadTotal > 99 ? '99+' : dmUnreadTotal}
-                    </span>
-                </button>
-            );
-        }
-        return null;
-    }
+    if (!isOpen) return null;
+
 
     if (isMinimized) {
         return (

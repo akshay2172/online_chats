@@ -71,7 +71,7 @@ const LinkPreview: React.FC<Props> = ({ url }) => {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block mt-2 max-w-sm rounded-lg border overflow-hidden transition-all hover:opacity-90 shadow-sm"
+            className="block mt-2 max-w-full rounded-lg border overflow-hidden transition-all hover:opacity-90 shadow-sm"
             style={{
                 backgroundColor: 'var(--bg-secondary)',
                 borderColor: 'var(--border-color)',

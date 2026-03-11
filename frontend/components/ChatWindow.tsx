@@ -681,7 +681,7 @@ const ChatWindow: React.FC<Props> = ({
                     }
                     return;
                   }}
-                  className={`group flex items-start gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isHighlighted ? 'animate-message-highlight animate-message-highlight-pulse' : ''
+                  className={`group flex items-start gap-3 max-w-[75%] ${isMe ? 'flex-row-reverse ml-auto' : 'flex-row'} ${isHighlighted ? 'animate-message-highlight animate-message-highlight-pulse' : ''
                     }`}
                   onMouseEnter={() => setHoveredMessage(msgId)}
                   onMouseLeave={() => {
@@ -719,7 +719,7 @@ const ChatWindow: React.FC<Props> = ({
                     </div>
                   )}
 
-                  <div className={`flex flex-col min-w-0 ${isMe ? 'items-end' : 'items-start'} max-w-[70%]`}>
+                  <div className={`flex flex-col min-w-0 ${isMe ? 'items-end' : 'items-start'} max-w-full`}>
                     {/* Reply Preview */}
                     {repliedMsg && (
                       <div

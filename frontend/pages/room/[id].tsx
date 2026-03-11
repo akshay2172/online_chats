@@ -151,6 +151,7 @@ export default function Room() {
 
     // Track if we've already sent a join request to prevent duplicates
     const hasJoinedRef = useRef(false);
+    const searchTimeoutRef = useRef<any>(null);
 
     // Reset join tracking when room ID changes
     useEffect(() => {
@@ -280,7 +281,7 @@ export default function Room() {
             if (msg.sender !== currentU && msg._id) {
                 setTimeout(() => {
                     socket.emit('markAsRead', { messageId: msg._id, username: currentU, room: id });
-                }, 1000);
+                }, 3000);
             }
         };
 
@@ -322,7 +323,10 @@ export default function Room() {
         socket.on('messageUnpinned', (data: any) => { const mId = data.messageId || data._id; setMessages(prev => prev.map(m => (m._id === mId || m.id === mId) ? { ...m, isPinned: false } : m)); setPinnedMessages(prev => prev.filter(m => m._id !== mId && m.id !== mId)); });
         socket.on('mention', (data) => addToast(`${data.mentionedBy} mentioned you`));
         socket.on('userTyping', ({ username: tu, isTyping }) => { if (tu === activeUsernameRef.current) return; setTypingUsers(prev => isTyping ? (prev.includes(tu) ? prev : [...prev, tu]) : prev.filter(u => u !== tu)); });
-        socket.on('error', ({ message }) => addToast(message));
+        socket.on('error', ({ message }) => {
+            addToast(message);
+            setIsSearching(false);
+        });
 
         // Room system events
         socket.on('roomCountInfo', setRoomCountInfo);
@@ -539,11 +543,13 @@ export default function Room() {
         window.addEventListener('openDMPanel', forceOpenSidebar);
         window.addEventListener('viewProfileInSidebar', forceOpenSidebar);
         window.addEventListener('openDMCard', () => setShowDMCard(true));
+        window.addEventListener('showToast', (e: any) => addToast(e.detail));
 
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
             window.removeEventListener('openDMPanel', forceOpenSidebar);
             window.removeEventListener('viewProfileInSidebar', forceOpenSidebar);
+            window.removeEventListener('showToast', (e: any) => addToast(e.detail));
             if (id && activeUsernameRef.current) {
                 socket.emit('leaveRoom', { room: id, username: activeUsernameRef.current });
             }
@@ -862,12 +868,24 @@ export default function Room() {
                                             style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                                             value={searchQuery}
                                             onChange={(e) => {
-                                                setSearchQuery(e.target.value);
-                                                if (e.target.value.length > 2) {
-                                                    handleSearchMessages(e.target.value, {});
+                                                const val = e.target.value;
+                                                setSearchQuery(val);
+                                                if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                                if (val.length > 2) {
+                                                    searchTimeoutRef.current = setTimeout(() => {
+                                                        handleSearchMessages(val, {});
+                                                    }, 300);
+                                                } else {
+                                                    setSearchResults([]);
+                                                    setIsSearching(false);
                                                 }
                                             }}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSearchMessages(searchQuery, {})}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                                    handleSearchMessages(searchQuery, {});
+                                                }
+                                            }}
                                         />
                                         <Search className="w-4 h-4 absolute left-3" style={{ color: 'var(--text-muted)' }} />
 
@@ -959,6 +977,7 @@ export default function Room() {
                         pinnedMessages={pinnedMessages}
                         onlineUsers={users.filter(u => u.isActive).map(u => u.name)}
                         unreadMessageId={unreadMessageId}
+                        onJumpToMessage={() => { }}
                     />
 
                     {showSearch && (
