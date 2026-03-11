@@ -600,12 +600,6 @@ export class ChatService {
     return await this.userModel.findOne({ username }).exec();
   }
 
-  async getBlockedUsers(username: string): Promise<string[]> {
-    const user = await this.userModel.findOne({ username }).select('blockedUsers').lean();
-    return user?.blockedUsers || [];
-  }
-
-
   async updateUserProfile(username: string, updates: any): Promise<UserDocument | null> {
     const escapedUsername = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return await this.userModel
@@ -1058,6 +1052,29 @@ export class ChatService {
       conversation.unreadCount.set(username, 0);
       await conversation.save();
     }
+  }
+
+  async markDMMessageDelivered(messageId: string): Promise<void> {
+    await this.dmMessageModel.findByIdAndUpdate(messageId, { deliveredAt: new Date() });
+  }
+
+  async markPendingDMsAsDelivered(username: string): Promise<DMMessageDocument[]> {
+    const now = new Date();
+    const messages = await this.dmMessageModel.find({
+      receiver: username,
+      deliveredAt: null,
+      isDeleted: false,
+    }).exec();
+
+    if (messages.length > 0) {
+      await this.dmMessageModel.updateMany(
+        { receiver: username, deliveredAt: null, isDeleted: false },
+        { deliveredAt: now },
+      );
+      // Return with deliveredAt set for notification
+      return messages.map(m => { m.deliveredAt = now; return m; });
+    }
+    return [];
   }
 
   async deleteDMConversation(conversationId: string, username: string): Promise<void> {

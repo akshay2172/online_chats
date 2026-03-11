@@ -31,6 +31,7 @@ interface DMMsg {
   messageType?: string;
   fileData?: any;
   readAt?: string;
+  deliveredAt?: string;
   isEdited?: boolean;
   editedAt?: string;
   replyTo?: string;
@@ -231,7 +232,9 @@ export default function DirectMessages({
                       <span className="text-[10px] opacity-60">{formatMessageTime(msg.createdAt)}</span>
                       {isMine && (
                         msg.readAt ? (
-                          <CheckCheck className="w-3 h-3 opacity-60" />
+                          <CheckCheck className="w-3 h-3" style={{ color: '#53BDEB' }} />
+                        ) : msg.deliveredAt ? (
+                          <CheckCheck className="w-3 h-3 opacity-50" />
                         ) : (
                           <Check className="w-3 h-3 opacity-40" />
                         )

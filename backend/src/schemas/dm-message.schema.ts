@@ -36,6 +36,9 @@ export class DMMessage {
     @Prop({ type: Date })
     readAt?: Date;
 
+    @Prop({ type: Date })
+    deliveredAt?: Date;
+
     @Prop({ default: false })
     isDeleted: boolean;
 

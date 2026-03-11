@@ -432,6 +432,20 @@ export default function Room() {
             ));
         });
 
+        // Read/delivery status events
+        socket.on('dmMessagesRead', (data: any) => {
+            setDmMessages(prev => prev.map(m =>
+                m.conversationId === data.conversationId && m.sender === activeUsernameRef.current && !m.readAt
+                    ? { ...m, readAt: data.readAt }
+                    : m
+            ));
+        });
+        socket.on('dmMessageDelivered', (data: any) => {
+            setDmMessages(prev => prev.map(m =>
+                m._id === data.messageId ? { ...m, deliveredAt: data.deliveredAt } : m
+            ));
+        });
+
         // Friends events
         socket.on('friendsList', (list: any[]) => setFriends(list));
         socket.on('friendRequestsList', (list: any[]) => setFriendRequests(list));

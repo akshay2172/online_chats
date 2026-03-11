@@ -35,6 +35,7 @@ interface DMMsg {
     messageType?: string;
     fileData?: any;
     readAt?: string;
+    deliveredAt?: string;
     isEdited?: boolean;
     editedAt?: string;
     replyTo?: string;
@@ -733,6 +734,19 @@ export default function DMFloatingCard({
                                                         )}
 
                                                         {msg.isEdited && <span className="text-[9px] opacity-70 ml-2 italic">edited</span>}
+
+                                                        {/* Read/Delivery Ticks */}
+                                                        {isMine && (
+                                                            <div className="flex items-center justify-end gap-0.5 mt-1" title={msg.readAt ? `Read` : msg.deliveredAt ? `Delivered` : 'Sent'}>
+                                                                {msg.readAt ? (
+                                                                    <CheckCheck className="w-3.5 h-3.5 text-blue-200" />
+                                                                ) : msg.deliveredAt ? (
+                                                                    <CheckCheck className="w-3.5 h-3.5 opacity-50" />
+                                                                ) : (
+                                                                    <Check className="w-3.5 h-3.5 opacity-40" />
+                                                                )}
+                                                            </div>
+                                                        )}
 
                                                         {/* Reactions inline */}
                                                         {msg.reactions && msg.reactions.length > 0 && (
