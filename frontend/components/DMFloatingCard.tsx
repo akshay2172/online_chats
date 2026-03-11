@@ -5,7 +5,7 @@ import {
     MessageCircle, Search, X, User as UserIcon, MoreVertical, Trash2,
     ArrowLeft, Send, Paperclip, Image as ImageIcon, Loader2, Check, CheckCheck,
     Minimize2, Maximize2, Settings, Smile, Edit2, FileIcon, MessageSquare, PlusCircle,
-    Mic, MicOff, Copy, Reply, Ban
+    Mic, MicOff, Copy, Reply, Ban, Forward, Pin, PinOff, Flag, AtSign
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useDarkMode } from '../pages/_app';
@@ -41,6 +41,8 @@ interface DMMsg {
     replyTo?: string;
     replyToMessage?: { sender: string; message: string; messageId: string };
     reactions?: Array<{ emoji: string; users: string[] }>;
+    isPinned?: boolean;
+    isReported?: boolean;
     createdAt: string;
 }
 
@@ -71,6 +73,9 @@ interface DMFloatingCardProps {
         targetUser?: { username: string; avatar?: string; displayName?: string; status?: string };
     } | null;
     onClearBlockedInfo?: () => void;
+    onPinDMMessage?: (conversationId: string, messageId: string) => void;
+    onUnpinDMMessage?: (conversationId: string, messageId: string) => void;
+    onReportDMMessage?: (conversationId: string, messageId: string) => void;
 }
 
 const getStatusColor = (status?: string) => {
@@ -99,7 +104,8 @@ export default function DMFloatingCard({
     isOpen, onClose, onMinimize, currentUser, conversations, activeDMConversation,
     dmMessages, dmUnreadTotal, onStartDM, onSendDMMessage, onDeleteDM,
     onMarkDMAsRead, onLoadDMMessages, onViewProfile, onReactDM, onDeleteDMMessage,
-    onEditDMMessage, onSendDMGif, onDMFileUpload, blockedInfo, onClearBlockedInfo
+    onEditDMMessage, onSendDMGif, onDMFileUpload, blockedInfo, onClearBlockedInfo,
+    onPinDMMessage, onUnpinDMMessage, onReportDMMessage
 }: DMFloatingCardProps) {
     const [isMinimized, setIsMinimized] = useState(false);
     const [search, setSearch] = useState('');
@@ -202,6 +208,9 @@ export default function DMFloatingCard({
         );
         setMessageText('');
         setReplyTo(null);
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+        }
         setTimeout(() => setIsSending(false), 200);
         inputRef.current?.focus();
     };
@@ -351,8 +360,8 @@ export default function DMFloatingCard({
                 borderColor: 'var(--border-color)',
                 borderWidth: '1px',
                 borderBottomWidth: 0,
-                width: (activeChat || blockedInfo) ? '750px' : '350px',
-                height: '550px' // Taller for good view
+                width: (activeChat || blockedInfo) ? '850px' : '380px',
+                height: '620px'
             }}
         >
             {/* LEFT PANEL: Conversation List */}
@@ -607,7 +616,7 @@ export default function DMFloatingCard({
                                         <div className="relative max-w-[85%] flex items-center gap-1">
                                             {/* Three-dot menu (left of mine, right of theirs) */}
                                             {isHovered && (
-                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-0 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }}
                                                         className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
@@ -621,7 +630,7 @@ export default function DMFloatingCard({
                                             {/* Dropdown Menu */}
                                             {activeMenuId === msg._id && (
                                                 <div
-                                                    className={`absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-6 rounded-xl shadow-xl py-1.5 min-w-[160px] z-30 border`}
+                                                    className={`absolute ${isMine ? 'right-0' : 'left-0'} top-8 rounded-xl shadow-xl py-1.5 min-w-[160px] z-30 border`}
                                                     style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
@@ -668,6 +677,39 @@ export default function DMFloatingCard({
                                                         <Copy className="w-4 h-4" /> Copy text
                                                     </button>
 
+                                                    <button
+                                                        onClick={() => {
+                                                            localStorage.setItem('forwardedMessage', JSON.stringify({ text: msg.message, sender: msg.sender }));
+                                                            setActiveMenuId(null);
+                                                            window.dispatchEvent(new CustomEvent('showToast', { detail: 'Message ready to forward!' }));
+                                                        }}
+                                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                        style={{ color: 'var(--text-primary)' }}
+                                                    >
+                                                        <Forward className="w-4 h-4" /> Forward
+                                                    </button>
+
+                                                    {msg.isPinned ? (
+                                                        <button onClick={() => { onUnpinDMMessage?.(activeChat._id, msg._id); setActiveMenuId(null); }}
+                                                            className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                            style={{ color: 'var(--text-primary)' }}>
+                                                            <PinOff className="w-4 h-4" /> Unpin
+                                                        </button>
+                                                    ) : (
+                                                        <button onClick={() => { onPinDMMessage?.(activeChat._id, msg._id); setActiveMenuId(null); }}
+                                                            className="w-full px-4 py-2 text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                                                            style={{ color: 'var(--text-primary)' }}>
+                                                            <Pin className="w-4 h-4" /> Pin
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => { onReportDMMessage?.(activeChat._id, msg._id); setActiveMenuId(null); }}
+                                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 text-orange-600 transition-colors hover:opacity-80"
+                                                    >
+                                                        <Flag className="w-4 h-4" /> Report
+                                                    </button>
+
                                                     {isMine && msg.messageType === 'text' && (
                                                         <button
                                                             onClick={() => { setEditingMessageId(msg._id); setEditMessageText(msg.message); setActiveMenuId(null); }}
@@ -691,11 +733,11 @@ export default function DMFloatingCard({
 
                                             {/* Message Bubble */}
                                             <div
-                                                className={`rounded-2xl px-3 py-2 text-sm relative break-words shadow-sm ${isMine
+                                                className={`rounded-2xl px-3 py-2 text-sm relative break-words overflow-hidden shadow-sm ${isMine
                                                     ? 'bg-blue-500 text-white rounded-tr-none'
                                                     : 'rounded-tl-none'
                                                     }`}
-                                                style={!isMine ? { backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' } : {}}
+                                                style={!isMine ? { backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', wordBreak: 'break-word' } : { wordBreak: 'break-word' }}
                                             >
                                                 {msg.replyToMessage && (
                                                     <div className={`mb-1.5 p-1.5 rounded text-xs border-l-2 ${isMine ? 'bg-blue-600 border-white text-blue-100' : ''}`}
@@ -738,7 +780,7 @@ export default function DMFloatingCard({
                                                                 <FileIcon className="w-4 h-4" /> {msg.fileData.originalName}
                                                             </a>
                                                         ) : (
-                                                            <div className="whitespace-pre-wrap">{msg.message}</div>
+                                                            <div className="whitespace-pre-wrap break-words" style={{ wordBreak: 'break-word' }}>{msg.message}</div>
                                                         )}
 
                                                         {msg.isEdited && <span className="text-[9px] opacity-70 ml-2 italic">edited</span>}

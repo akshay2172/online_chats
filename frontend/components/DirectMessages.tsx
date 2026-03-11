@@ -125,6 +125,9 @@ export default function DirectMessages({
     setIsSending(true);
     onSendDMMessage(activeChat._id, messageText.trim(), activeChat.otherUser.username);
     setMessageText('');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setTimeout(() => setIsSending(false), 200);
     inputRef.current?.focus();
   };

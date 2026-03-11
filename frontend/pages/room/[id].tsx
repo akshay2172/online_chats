@@ -446,6 +446,13 @@ export default function Room() {
             ));
         });
 
+        socket.on('dmMessagePinned', (data: any) => {
+            setDmMessages(prev => prev.map(m => m._id === data.messageId ? { ...m, isPinned: true } : m));
+        });
+        socket.on('dmMessageUnpinned', (data: any) => {
+            setDmMessages(prev => prev.map(m => m._id === data.messageId ? { ...m, isPinned: false } : m));
+        });
+
         // Friends events
         socket.on('friendsList', (list: any[]) => setFriends(list));
         socket.on('friendRequestsList', (list: any[]) => setFriendRequests(list));
@@ -538,6 +545,10 @@ export default function Room() {
             socket.off('dmMessageDeleted');
             socket.off('dmMessageEdited');
             socket.off('dmBlocked');
+            socket.off('dmMessagesRead');
+            socket.off('dmMessageDelivered');
+            socket.off('dmMessagePinned');
+            socket.off('dmMessageUnpinned');
             socket.off('userBlocked');
             socket.off('userUnblocked');
             socket.off('blockedUsersList');
@@ -1112,6 +1123,9 @@ export default function Room() {
                 onDMFileUpload={handleDMFileUpload}
                 blockedInfo={dmBlockedInfo}
                 onClearBlockedInfo={() => setDmBlockedInfo(null)}
+                onPinDMMessage={(convId, msgId) => socket.emit('pinDMMessage', { conversationId: convId, messageId: msgId })}
+                onUnpinDMMessage={(convId, msgId) => socket.emit('unpinDMMessage', { conversationId: convId, messageId: msgId })}
+                onReportDMMessage={(convId, msgId) => socket.emit('reportDMMessage', { conversationId: convId, messageId: msgId })}
             />
 
             {/* Floating DM Button - bottom right */}

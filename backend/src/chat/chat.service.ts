@@ -1083,6 +1083,18 @@ export class ChatService {
     });
   }
 
+  async pinDMMessage(messageId: string): Promise<DMMessageDocument | null> {
+    return await this.dmMessageModel.findByIdAndUpdate(messageId, { isPinned: true }, { new: true }).exec();
+  }
+
+  async unpinDMMessage(messageId: string): Promise<DMMessageDocument | null> {
+    return await this.dmMessageModel.findByIdAndUpdate(messageId, { isPinned: false }, { new: true }).exec();
+  }
+
+  async reportDMMessage(messageId: string): Promise<DMMessageDocument | null> {
+    return await this.dmMessageModel.findByIdAndUpdate(messageId, { isReported: true }, { new: true }).exec();
+  }
+
   async getDMMessageById(messageId: string): Promise<DMMessageDocument | null> {
     return await this.dmMessageModel.findById(messageId).exec();
   }

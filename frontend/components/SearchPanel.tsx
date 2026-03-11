@@ -106,12 +106,16 @@ export default function SearchPanel({
         switch (activeFilterType) {
             case 'has':
                 return (
-                    <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl z-50 py-1">
+                    <div className="absolute top-full right-0 mt-2 w-48 rounded-lg shadow-xl z-50 py-1"
+                        style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
                         {['image', 'file', 'link', 'gif', 'voice'].map((opt) => (
                             <button
                                 key={opt}
                                 onClick={() => applyFilter('has', opt as any)}
-                                className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200 capitalize"
+                                className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80 capitalize"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                                 {opt}
                             </button>
@@ -121,10 +125,12 @@ export default function SearchPanel({
             case 'before':
             case 'after':
                 return (
-                    <div className="absolute top-full left-0 mt-2 p-3 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl z-50">
+                    <div className="absolute top-full right-0 mt-2 p-3 rounded-lg shadow-xl z-50"
+                        style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
                         <input
                             type="date"
-                            className="w-full p-2 text-sm border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded outline-none"
+                            className="w-full p-2 text-sm rounded outline-none"
+                            style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
                             onChange={(e) => applyFilter(activeFilterType, e.target.value)}
                         />
                     </div>
@@ -136,11 +142,11 @@ export default function SearchPanel({
                 ).slice(0, 5);
 
                 return (
-                    <div className="absolute top-full left-0 mt-2 w-64 rounded-lg shadow-xl z-50 overflow-hidden"
+                    <div className="absolute top-full right-0 mt-2 w-64 rounded-lg shadow-xl z-50 overflow-hidden"
                         style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
                         <input
                             type="text"
-                            placeholder="Username..."
+                            placeholder="Search users..."
                             autoFocus
                             className="w-full p-3 text-sm border-b outline-none"
                             style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
@@ -153,7 +159,7 @@ export default function SearchPanel({
                                 <button
                                     key={u.name}
                                     onClick={() => applyFilter(activeFilterType, u.name)}
-                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors"
                                     style={{ color: 'var(--text-primary)' }}
                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -161,20 +167,17 @@ export default function SearchPanel({
                                     {u.avatar ? (
                                         <img src={u.avatar} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                                     ) : (
-                                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                                            style={{ backgroundColor: 'var(--accent-color)', color: 'white' }}>
+                                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-blue-500 text-white">
                                             {(u.displayName || u.name).charAt(0).toUpperCase()}
                                         </div>
                                     )}
-                                    <div className="flex flex-col items-start min-w-0">
-                                        <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                                    <div className="flex flex-col items-start min-w-0 overflow-hidden">
+                                        <span className="font-medium text-sm truncate w-full flex justify-start" style={{ color: 'var(--text-primary)' }}>
                                             {u.displayName || u.name}
                                         </span>
-                                        {u.displayName && u.displayName !== u.name && (
-                                            <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                                                {u.name}
-                                            </span>
-                                        )}
+                                        <span className="text-xs truncate w-full flex justify-start" style={{ color: 'var(--text-muted)' }}>
+                                            @{u.name}
+                                        </span>
                                     </div>
                                 </button>
                             ))}

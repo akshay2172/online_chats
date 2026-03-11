@@ -2045,6 +2045,77 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.emit('error', { message: 'Failed to delete DM conversation.' });
     }
   }
+
+  @SubscribeMessage('pinDMMessage')
+  async handlePinDMMessage(
+    @MessageBody() data: { conversationId: string; messageId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+      const pinned = await this.chatService.pinDMMessage(data.messageId);
+      if (pinned) {
+        client.emit('dmMessagePinned', { conversationId: data.conversationId, messageId: data.messageId });
+        const conversation = await this.chatService.getDMConversationById(data.conversationId);
+        if (conversation) {
+          const otherUser = conversation.participants.find((p: string) => p !== username);
+          if (otherUser) {
+            const otherSockets = this.chatService.getUserSocketIds(otherUser);
+            for (const s of otherSockets) {
+              this.server.to(s).emit('dmMessagePinned', { conversationId: data.conversationId, messageId: data.messageId });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'pinDMMessage', user: client.data.user?.username });
+    }
+  }
+
+  @SubscribeMessage('unpinDMMessage')
+  async handleUnpinDMMessage(
+    @MessageBody() data: { conversationId: string; messageId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+      const unpinned = await this.chatService.unpinDMMessage(data.messageId);
+      if (unpinned) {
+        client.emit('dmMessageUnpinned', { conversationId: data.conversationId, messageId: data.messageId });
+        const conversation = await this.chatService.getDMConversationById(data.conversationId);
+        if (conversation) {
+          const otherUser = conversation.participants.find((p: string) => p !== username);
+          if (otherUser) {
+            const otherSockets = this.chatService.getUserSocketIds(otherUser);
+            for (const s of otherSockets) {
+              this.server.to(s).emit('dmMessageUnpinned', { conversationId: data.conversationId, messageId: data.messageId });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'unpinDMMessage', user: client.data.user?.username });
+    }
+  }
+
+  @SubscribeMessage('reportDMMessage')
+  async handleReportDMMessage(
+    @MessageBody() data: { conversationId: string; messageId: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+      const reported = await this.chatService.reportDMMessage(data.messageId);
+      if (reported) {
+        client.emit('dmMessageReported', { conversationId: data.conversationId, messageId: data.messageId });
+      }
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'reportDMMessage', user: client.data.user?.username });
+    }
+  }
   @SubscribeMessage('reactDMMessage')
   async handleReactDM(
     @MessageBody() data: { conversationId: string; messageId: string; emoji: string; action: 'add' | 'remove' },

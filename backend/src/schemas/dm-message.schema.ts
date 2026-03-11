@@ -42,6 +42,12 @@ export class DMMessage {
     @Prop({ default: false })
     isDeleted: boolean;
 
+    @Prop({ default: false })
+    isPinned: boolean;
+
+    @Prop({ default: false })
+    isReported: boolean;
+
     @Prop({ type: String })
     editedMessage?: string;
 
