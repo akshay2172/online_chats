@@ -136,12 +136,14 @@ export default function SearchPanel({
                 ).slice(0, 5);
 
                 return (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                    <div className="absolute top-full left-0 mt-2 w-56 rounded-lg shadow-xl z-50 overflow-hidden border"
+                        style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                         <input
                             type="text"
                             placeholder="Username..."
                             autoFocus
-                            className="w-full p-3 text-sm border-b dark:border-gray-700 dark:bg-gray-800 dark:text-white outline-none"
+                            className="w-full p-3 text-sm border-b outline-none"
+                            style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                             value={filterInput}
                             onChange={(e) => setFilterInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && applyFilter(activeFilterType, filterInput)}
@@ -151,9 +153,22 @@ export default function SearchPanel({
                                 <button
                                     key={u.name}
                                     onClick={() => applyFilter(activeFilterType, u.name)}
-                                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200"
+                                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-3 transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
-                                    {u.displayName || u.name}
+                                    {u.avatar ? (
+                                        <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                                    ) : (
+                                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: 'var(--accent-color)' }}>
+                                            {(u.displayName || u.name).charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="font-medium truncate">{u.displayName || u.name}</span>
+                                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{u.name}</span>
+                                    </div>
                                 </button>
                             ))}
                         </div>
@@ -216,7 +231,7 @@ export default function SearchPanel({
                                         ? 'bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300'
                                         : 'hover:opacity-80'
                                     }`}
-                                style={{ 
+                                style={{
                                     backgroundColor: activeFilterType !== type && !filters[type] ? 'var(--bg-secondary)' : undefined,
                                     borderColor: activeFilterType !== type && !filters[type] ? 'var(--border-color)' : undefined,
                                     color: activeFilterType !== type && !filters[type] ? 'var(--text-secondary)' : undefined

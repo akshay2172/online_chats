@@ -253,18 +253,28 @@ export default function DirectMessages({
           className="p-3 border-t flex items-center gap-2 shrink-0"
           style={{ borderColor: 'var(--border-color)' }}
         >
-          <input
-            ref={inputRef}
-            type="text"
+          <textarea
             value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            onChange={(e) => {
+              setMessageText(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2.5 rounded-full text-sm outline-none transition-all"
+            rows={1}
+            className="flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none transition-all resize-none"
             style={{
               backgroundColor: 'var(--bg-secondary)',
               color: 'var(--text-primary)',
               border: '1px solid var(--border-color)',
+              maxHeight: '120px',
+              overflowY: 'auto',
             }}
             autoFocus
           />
