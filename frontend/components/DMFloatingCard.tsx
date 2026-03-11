@@ -750,11 +750,11 @@ export default function DMFloatingCard({
                                                             <span className="text-[10px] opacity-70">{formatTime(msg.createdAt)}</span>
                                                             {isMine && (
                                                                 msg.readAt ? (
-                                                                    <CheckCheck className="w-3 h-3" style={{ color: '#53BDEB' }} />
+                                                                    <CheckCheck className="w-3.5 h-3.5" style={{ color: '#4ADE80' }} />
                                                                 ) : msg.deliveredAt ? (
-                                                                    <CheckCheck className="w-3 h-3 opacity-50" />
+                                                                    <CheckCheck className="w-3.5 h-3.5 opacity-50" />
                                                                 ) : (
-                                                                    <Check className="w-3 h-3 opacity-50" />
+                                                                    <Check className="w-3.5 h-3.5 opacity-50" />
                                                                 )
                                                             )}
                                                         </div>
@@ -871,8 +871,9 @@ export default function DMFloatingCard({
                                         value={messageText}
                                         onChange={(e) => {
                                             setMessageText(e.target.value);
+                                            // Auto-resize
                                             e.target.style.height = 'auto';
-                                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                                            e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
                                         }}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -886,8 +887,9 @@ export default function DMFloatingCard({
                                             backgroundColor: 'var(--bg-secondary)',
                                             color: 'var(--text-primary)',
                                             borderColor: 'var(--border-color)',
-                                            maxHeight: '120px',
+                                            maxHeight: '100px',
                                             overflowY: 'auto',
+                                            overflowX: 'hidden',
                                         }}
                                     />
                                     <button

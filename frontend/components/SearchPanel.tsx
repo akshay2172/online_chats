@@ -136,8 +136,8 @@ export default function SearchPanel({
                 ).slice(0, 5);
 
                 return (
-                    <div className="absolute top-full left-0 mt-2 w-56 rounded-lg shadow-xl z-50 overflow-hidden border"
-                        style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                    <div className="absolute top-full left-0 mt-2 w-64 rounded-lg shadow-xl z-50 overflow-hidden"
+                        style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
                         <input
                             type="text"
                             placeholder="Username..."
@@ -153,21 +153,28 @@ export default function SearchPanel({
                                 <button
                                     key={u.name}
                                     onClick={() => applyFilter(activeFilterType, u.name)}
-                                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-3 transition-colors"
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
                                     style={{ color: 'var(--text-primary)' }}
                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     {u.avatar ? (
-                                        <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                                        <img src={u.avatar} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                                     ) : (
-                                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: 'var(--accent-color)' }}>
+                                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                                            style={{ backgroundColor: 'var(--accent-color)', color: 'white' }}>
                                             {(u.displayName || u.name).charAt(0).toUpperCase()}
                                         </div>
                                     )}
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="font-medium truncate">{u.displayName || u.name}</span>
-                                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{u.name}</span>
+                                    <div className="flex flex-col items-start min-w-0">
+                                        <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                                            {u.displayName || u.name}
+                                        </span>
+                                        {u.displayName && u.displayName !== u.name && (
+                                            <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                                                {u.name}
+                                            </span>
+                                        )}
                                     </div>
                                 </button>
                             ))}

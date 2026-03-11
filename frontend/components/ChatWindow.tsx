@@ -1061,9 +1061,9 @@ const ChatWindow: React.FC<Props> = ({
                           <span className="text-[11px]">{formatTime(msg.timestamp || msg.createdAt)}</span>
                           {isMe && msg.readBy && (
                             msg.readBy.length > 1 ? (
-                              <CheckCheck className="w-3 h-3 text-blue-200" />
+                              <CheckCheck className="w-3.5 h-3.5" style={{ color: '#4ADE80' }} />
                             ) : (
-                              <Check className="w-3 h-3" />
+                              <Check className="w-3.5 h-3.5" />
                             )
                           )}
                         </div>
