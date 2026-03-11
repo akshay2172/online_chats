@@ -1857,6 +1857,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
+      // Check if sender has blocked the receiver
+      const hasBlockedReceiver = await this.chatService.isUserBlocked(username, data.receiver);
+      if (hasBlockedReceiver) {
+        client.emit('dmBlocked', {
+          targetUsername: data.receiver,
+          direction: 'blockedByYou',
+          message: 'You have blocked this user. Unblock them to send messages.',
+        });
+        return;
+      }
+
+
       // Sanitize message
       let sanitizedMessage: string;
       try {
@@ -2098,6 +2110,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
+      // Check blocks (both directions)
+      const isBlockedByReceiver = await this.chatService.isUserBlocked(data.receiver, username);
+      if (isBlockedByReceiver) {
+        client.emit('dmBlocked', { targetUsername: data.receiver, direction: 'blockedByTarget', message: 'This user has blocked you.' });
+        client.emit('error', { message: 'You cannot message this user.' });
+        return;
+      }
+      const hasBlockedReceiver = await this.chatService.isUserBlocked(username, data.receiver);
+      if (hasBlockedReceiver) {
+        client.emit('dmBlocked', { targetUsername: data.receiver, direction: 'blockedByYou', message: 'You have blocked this user. Unblock them to send messages.' });
+        return;
+      }
+
+
       const dmMessage = await this.chatService.sendDMMessage(
         data.conversationId, username, data.receiver, data.gifUrl, 'gif', data.gifData
       );
@@ -2135,6 +2161,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
+      // Check blocks (both directions)
+      const isBlockedByReceiver = await this.chatService.isUserBlocked(data.receiver, username);
+      if (isBlockedByReceiver) {
+        client.emit('dmBlocked', { targetUsername: data.receiver, direction: 'blockedByTarget', message: 'This user has blocked you.' });
+        client.emit('error', { message: 'You cannot message this user.' });
+        return;
+      }
+      const hasBlockedReceiver = await this.chatService.isUserBlocked(username, data.receiver);
+      if (hasBlockedReceiver) {
+        client.emit('dmBlocked', { targetUsername: data.receiver, direction: 'blockedByYou', message: 'You have blocked this user. Unblock them to send messages.' });
+        return;
+      }
+
+
       let msgType = 'file';
       if (data.fileData.mimetype?.startsWith('image/')) msgType = 'image';
       if (data.fileData.mimetype?.startsWith('audio/')) msgType = 'voice';
@@ -2163,6 +2203,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.emit('error', { message: 'Failed to send file.' });
     }
   }
+
+  @SubscribeMessage('getBlockedUsers')
+  async handleGetBlockedUsers(@ConnectedSocket() client: AuthenticatedSocket) {
+    try {
+      const username = client.data.user?.username;
+      if (!username) return;
+      const blockedUsers = await this.chatService.getBlockedUsers(username);
+      client.emit('blockedUsersList', { blockedUsers });
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'getBlockedUsers', user: client.data.user?.username });
+    }
+  }
+
 
   @SubscribeMessage('getUserProfile')
   async handleGetUserProfile(

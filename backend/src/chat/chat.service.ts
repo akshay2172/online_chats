@@ -600,6 +600,12 @@ export class ChatService {
     return await this.userModel.findOne({ username }).exec();
   }
 
+  async getBlockedUsers(username: string): Promise<string[]> {
+    const user = await this.userModel.findOne({ username }).select('blockedUsers').lean();
+    return user?.blockedUsers || [];
+  }
+
+
   async updateUserProfile(username: string, updates: any): Promise<UserDocument | null> {
     const escapedUsername = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return await this.userModel

@@ -194,8 +194,10 @@ export default function Room() {
                 // Load DM conversations on connect
                 if (localStorage.getItem('accessToken')) {
                     socket.emit('getDMConversations');
+                    socket.emit('getBlockedUsers');
                 }
             }
+
         };
 
         const onDisconnect = () => setIsConnected(false);
@@ -210,6 +212,10 @@ export default function Room() {
                     country: localQuery.country,
                     avatar: localQuery.avatar
                 });
+                if (localStorage.getItem('accessToken')) {
+                    socket.emit('getDMConversations');
+                    socket.emit('getBlockedUsers');
+                }
             }
         };
 
@@ -434,8 +440,12 @@ export default function Room() {
                 prev && prev.targetUsername === data.username ? null : prev
             );
         });
+        socket.on('blockedUsersList', (data: any) => {
+            setBlockedUsers(data.blockedUsers || []);
+        });
 
         // Avatar update
+
 
         socket.on('avatarUpdated', (data: any) => {
             if (data.avatarUrl) {
@@ -507,7 +517,9 @@ export default function Room() {
             socket.off('dmBlocked');
             socket.off('userBlocked');
             socket.off('userUnblocked');
+            socket.off('blockedUsersList');
             clearTimeout(initTimer);
+
 
         };
     }, [id]);
