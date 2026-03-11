@@ -408,9 +408,14 @@ export default function Room() {
             }
         });
         socket.on('dmRead', (data: any) => {
-            setDmConversations(prev => prev.map(c =>
-                c._id === data.conversationId ? { ...c, unreadCount: 0 } : c
-            ));
+            setDmConversations(prev => {
+                const updated = prev.map(c =>
+                    c._id === data.conversationId ? { ...c, unreadCount: 0 } : c
+                );
+                const newTotal = updated.reduce((sum: number, c: any) => sum + (c.unreadCount || 0), 0);
+                setDmUnreadTotal(newTotal);
+                return updated;
+            });
         });
 
         socket.on('dmMessageReaction', (data: any) => {
@@ -582,7 +587,12 @@ export default function Room() {
     const handleFileUpload = useCallback(async (file: File) => {
         try {
             const formData = new FormData(); formData.append('file', file);
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, { method: 'POST', body: formData });
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, {
+                method: 'POST',
+                body: formData,
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
             if (!response.ok) throw new Error('Upload failed');
             const { url, filename, originalName, mimetype, size } = await response.json();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -601,7 +611,12 @@ export default function Room() {
     const handleVoiceRecord = useCallback(async (audioBlob: Blob) => {
         try {
             const formData = new FormData(); formData.append('file', audioBlob, 'voice.webm');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, { method: 'POST', body: formData });
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, {
+                method: 'POST',
+                body: formData,
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
             if (!response.ok) throw new Error('Upload failed');
             const { url, filename } = await response.json();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -656,7 +671,12 @@ export default function Room() {
         try {
             const formData = new FormData();
             formData.append('file', file);
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, { method: 'POST', body: formData });
+            const token = localStorage.getItem('accessToken');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/upload`, {
+                method: 'POST',
+                body: formData,
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
             if (!response.ok) throw new Error('Upload failed');
             const { url, filename, originalName, mimetype, size } = await response.json();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

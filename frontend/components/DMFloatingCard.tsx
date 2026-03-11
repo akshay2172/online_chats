@@ -143,7 +143,6 @@ export default function DMFloatingCard({
         if (onMinimize) onMinimize();
     };
 
-    // Sync active chat from props
     useEffect(() => {
         if (isOpen && activeDMConversation) {
             setActiveChat(activeDMConversation);
@@ -151,6 +150,16 @@ export default function DMFloatingCard({
             setIsMinimized(false);
         }
     }, [activeDMConversation, isOpen, onLoadDMMessages]);
+
+    // Sync active chat if it exists in conversations (to catch unreadCount updates)
+    useEffect(() => {
+        if (activeChat) {
+            const updated = conversations.find(c => c._id === activeChat._id);
+            if (updated && updated.unreadCount !== activeChat.unreadCount) {
+                setActiveChat({ ...activeChat, ...updated });
+            }
+        }
+    }, [conversations, activeChat]);
 
     // Scroll to bottom
     useEffect(() => {
