@@ -237,17 +237,21 @@ const ChatWindow: React.FC<Props> = ({
   const scrollToMessage = useCallback((messageId: string, highlight: boolean = true) => {
     const messageEl = messageRefs.current.get(messageId);
     if (messageEl && chatRef.current) {
+      const wrapper = messageEl.parentElement;
       messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
       if (highlight) {
         setTempHighlight(messageId);
-        // Add CSS class for animation
-        messageEl.classList.add('animate-message-highlight');
-        messageEl.classList.add('animate-message-highlight-pulse');
+        if (wrapper) {
+          wrapper.classList.add('animate-message-highlight');
+          wrapper.classList.add('animate-message-highlight-pulse');
+        }
 
         setTimeout(() => {
-          messageEl.classList.remove('animate-message-highlight');
-          messageEl.classList.remove('animate-message-highlight-pulse');
+          if (wrapper) {
+            wrapper.classList.remove('animate-message-highlight');
+            wrapper.classList.remove('animate-message-highlight-pulse');
+          }
           setTempHighlight(null);
         }, 3000);
       }
@@ -452,7 +456,8 @@ const ChatWindow: React.FC<Props> = ({
             src={msg.fileData.url}
             alt={msg.fileData.originalName}
             crossOrigin="anonymous"
-            className="max-w-sm max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+            className="max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+            style={{ maxWidth: 'min(384px, 100%)' }}
             onClick={() => window.open(msg.fileData?.url, '_blank')}
             onError={(e) => {
               console.error('Image load error:', msg.fileData?.url);
@@ -476,7 +481,8 @@ const ChatWindow: React.FC<Props> = ({
             src={msg.message}
             alt={msg.messageType === 'gif' ? 'GIF' : 'Sticker'}
             crossOrigin="anonymous"
-            className="max-w-sm max-h-64 rounded-lg bg-transparent"
+            className="max-h-64 rounded-lg bg-transparent"
+            style={{ maxWidth: 'min(384px, 100%)' }}
           />
         </div>
       );
@@ -673,24 +679,26 @@ const ChatWindow: React.FC<Props> = ({
                 )}
 
                 <div
-                  ref={(el: HTMLDivElement | null) => {
-                    if (el) {
-                      messageRefs.current.set(msgId, el);
-                    } else {
-                      messageRefs.current.delete(msgId);
-                    }
-                    return;
-                  }}
-                  className={`group flex items-start gap-3 max-w-[75%] ${isMe ? 'flex-row-reverse ml-auto' : 'flex-row'} ${isHighlighted ? 'animate-message-highlight animate-message-highlight-pulse' : ''
-                    }`}
+                  className={`w-full rounded-lg ${isHighlighted ? 'animate-message-highlight animate-message-highlight-pulse' : ''}`}
                   onMouseEnter={() => setHoveredMessage(msgId)}
                   onMouseLeave={() => {
                     if (activeMenu !== msgId && activeEmojiPicker !== msgId) {
                       setHoveredMessage(null);
                     }
                   }}
-                  data-message-id={msgId}
                 >
+                  <div
+                    ref={(el: HTMLDivElement | null) => {
+                      if (el) {
+                        messageRefs.current.set(msgId, el);
+                      } else {
+                        messageRefs.current.delete(msgId);
+                      }
+                      return;
+                    }}
+                    className={`group flex items-start gap-3 max-w-[75%] ${isMe ? 'flex-row-reverse ml-auto' : 'flex-row'}`}
+                    data-message-id={msgId}
+                  >
                   {/* Avatar */}
                   {!isMe && (
                     <div
@@ -1099,6 +1107,7 @@ const ChatWindow: React.FC<Props> = ({
                       )}
                     </div>
                   </div>
+                </div>
                 </div>
               </React.Fragment>
             );
