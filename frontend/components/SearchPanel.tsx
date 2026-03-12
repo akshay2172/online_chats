@@ -112,10 +112,8 @@ export default function SearchPanel({
                             <button
                                 key={opt}
                                 onClick={() => applyFilter('has', opt as any)}
-                                className="w-full text-left px-4 py-2 text-sm transition-colors hover:opacity-80 capitalize"
+                                className="w-full text-left px-4 py-2 text-sm transition-colors hover-bg-secondary capitalize"
                                 style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                                 {opt}
                             </button>
@@ -159,10 +157,8 @@ export default function SearchPanel({
                                 <button
                                     key={u.name}
                                     onClick={() => applyFilter(activeFilterType, u.name)}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors hover-bg-secondary"
                                     style={{ color: 'var(--text-primary)' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     {u.avatar ? (
                                         <img src={u.avatar} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
@@ -278,10 +274,8 @@ export default function SearchPanel({
                         {results.map((msg) => (
                             <div
                                 key={msg._id}
-                                className="p-4 border-b group cursor-pointer transition-colors"
+                                className="p-4 border-b group cursor-pointer transition-colors hover-bg-secondary"
                                 style={{ borderColor: 'var(--border-color)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 onClick={() => onJumpToMessage(msg._id)}
                             >
                                 <div className="flex items-center justify-between mb-1.5">

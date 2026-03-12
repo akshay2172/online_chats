@@ -760,13 +760,11 @@ const ChatWindow: React.FC<Props> = ({
                         >
                           <button
                             onClick={(e) => handleMenuToggle(msgId, e)}
-                            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors"
+                            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover-bg-menu"
                             style={{
                               color: 'var(--text-muted)',
-                              '--hover-bg': 'var(--menu-hover)'
-                            } as React.CSSProperties}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--menu-hover)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            }}
+                            aria-label="Message options"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>

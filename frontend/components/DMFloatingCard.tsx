@@ -201,6 +201,17 @@ export default function DMFloatingCard({
         return () => { socket.off('dmUserTyping', handleDMTyping); };
     }, [activeChat]);
 
+    useEffect(() => {
+        const handleClickOutside = () => {
+            setActiveMenuId(null);
+            setHoveredMessageId(null);
+        };
+        if (activeMenuId !== null) {
+            document.addEventListener('click', handleClickOutside);
+            return () => document.removeEventListener('click', handleClickOutside);
+        }
+    }, [activeMenuId]);
+
     const openChat = (conv: DMConversation) => {
         setActiveChat(conv);
         onLoadDMMessages(conv._id);
@@ -228,6 +239,15 @@ export default function DMFloatingCard({
         if (inputRef.current) {
             inputRef.current.style.height = 'auto';
         }
+
+        // Immediately stop typing indicator
+        if (dmTypingTimeoutRef.current) clearTimeout(dmTypingTimeoutRef.current);
+        socket.emit('dmTyping', {
+            conversationId: activeChat._id,
+            receiverUsername: activeChat.otherUser.username,
+            isTyping: false
+        });
+
         setTimeout(() => setIsSending(false), 200);
         inputRef.current?.focus();
     };
@@ -362,8 +382,8 @@ export default function DMFloatingCard({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded" onClick={(e) => { e.stopPropagation(); handleMinimizeToggle(); }}><Maximize2 className="w-4 h-4" /></button>
-                    <button className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded" onClick={(e) => { e.stopPropagation(); onClose(); }}><X className="w-4 h-4" /></button>
+                    <button className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded" onClick={(e) => { e.stopPropagation(); handleMinimizeToggle(); }} aria-label="Maximize"><Maximize2 className="w-4 h-4" /></button>
+                    <button className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="Close"><X className="w-4 h-4" /></button>
                 </div>
             </div>
         );
@@ -371,19 +391,26 @@ export default function DMFloatingCard({
 
     return (
         <div
-            className="fixed bottom-0 right-10 shadow-[0_-4px_25px_rgba(0,0,0,0.15)] flex flex-row overflow-hidden z-50 rounded-t-xl transition-all"
+            className={`fixed z-50 transition-all shadow-[0_-4px_25px_rgba(0,0,0,0.15)] flex flex-row ${
+                // Full screen on mobile, floating card on desktop
+                'inset-0 sm:inset-auto sm:bottom-0 sm:right-0 sm:mr-10 sm:rounded-t-xl sm:border'
+            } ${
+                (activeChat || blockedInfo) ? 'sm:w-[400px] lg:w-[850px]' : 'sm:w-[380px]'
+            }`}
             style={{
                 backgroundColor: 'var(--bg-primary)',
                 borderColor: 'var(--border-color)',
-                borderWidth: '1px',
                 borderBottomWidth: 0,
-                width: (activeChat || blockedInfo) ? '850px' : '380px',
-                height: '620px'
+                height: typeof window !== 'undefined' && window.innerWidth < 640 ? '100%' : 'min(620px, 85vh)',
+                width: typeof window !== 'undefined' && window.innerWidth < 640 ? '100%' : undefined,
+                maxWidth: '100vw'
             }}
         >
             {/* LEFT PANEL: Conversation List */}
             <div
-                className={`flex flex-col h-full shrink-0 transition-all ${activeChat ? 'w-1/3 border-r' : 'w-full'}`}
+                className={`flex flex-col h-full shrink-0 transition-all overflow-hidden rounded-tl-xl ${
+                    (activeChat || blockedInfo) ? 'hidden lg:flex lg:w-1/3 border-r' : 'w-full'
+                }`}
                 style={{ borderColor: 'var(--border-color)' }}
             >
                 <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-color)' }}>
@@ -392,8 +419,8 @@ export default function DMFloatingCard({
                         <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Chats</h3>
                     </div>
                     <div className="flex items-center gap-1">
-                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" onClick={handleMinimizeToggle}><Minimize2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" onClick={onClose}><X className="w-4 h-4" /></button>
+                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" onClick={handleMinimizeToggle} aria-label="Minimize"><Minimize2 className="w-4 h-4" /></button>
+                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors" onClick={onClose} aria-label="Close"><X className="w-4 h-4" /></button>
                     </div>
                 </div>
 
@@ -420,16 +447,10 @@ export default function DMFloatingCard({
                         <div
                             key={conv._id}
                             onClick={() => openChat(conv)}
-                            className="relative p-3 flex items-center gap-3 cursor-pointer transition-colors border-b last:border-0 group select-none"
+                            className={`relative p-3 flex items-center gap-3 cursor-pointer transition-colors border-b last:border-0 group select-none ${activeChat?._id === conv._id ? '' : 'hover-bg-secondary'}`}
                             style={{
                                 backgroundColor: activeChat?._id === conv._id ? 'var(--bg-tertiary)' : 'transparent',
                                 borderColor: 'var(--border-color)'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (activeChat?._id !== conv._id) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
-                            }}
-                            onMouseLeave={(e) => {
-                                if (activeChat?._id !== conv._id) e.currentTarget.style.backgroundColor = 'transparent';
                             }}
                         >
                             <div className="relative shrink-0 w-10 h-10">
@@ -477,7 +498,7 @@ export default function DMFloatingCard({
 
             {/* RIGHT PANEL: Blocked State */}
             {!activeChat && blockedInfo && (
-                <div className="flex flex-col h-full w-2/3 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="flex flex-col h-full w-full lg:w-2/3 relative overflow-hidden rounded-tr-xl" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                     {/* Blocked Header */}
                     <div className="p-3 border-b flex justify-between items-center shrink-0" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
                         <div className="flex items-center gap-3 min-w-0">
@@ -536,7 +557,7 @@ export default function DMFloatingCard({
 
             {/* RIGHT PANEL: Active Chat */}
             {activeChat && (
-                <div className="flex flex-col h-full w-2/3 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="flex flex-col h-full w-full lg:w-2/3 relative overflow-visible" style={{ backgroundColor: 'var(--bg-secondary)' }}>
 
                     {/* Chat Header */}
                     <div className="p-3 border-b flex flex-col gap-2 shrink-0" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
@@ -565,6 +586,7 @@ export default function DMFloatingCard({
                                     style={{ color: showDMSearch ? 'var(--accent-color)' : 'var(--text-muted)' }}
                                     onClick={() => { setShowDMSearch(!showDMSearch); setDmSearchQuery(''); }}
                                     title="Search messages"
+                                    aria-label="Search messages"
                                 >
                                     <Search className="w-4 h-4" />
                                 </button>
@@ -572,6 +594,7 @@ export default function DMFloatingCard({
                                     className="p-1.5 rounded-lg transition-colors"
                                     style={{ color: 'var(--text-muted)' }}
                                     onClick={() => { setActiveChat(null); setShowDMSearch(false); setDmSearchQuery(''); }}
+                                    aria-label="Go back"
                                 >
                                     <ArrowLeft className="w-4 h-4" />
                                 </button>
@@ -635,16 +658,14 @@ export default function DMFloatingCard({
                                             }
                                         }}
                                         className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-full group`}
-                                        onMouseEnter={() => setHoveredMessageId(msg._id)}
-                                        onMouseLeave={() => { if (activeMenuId !== msg._id) setHoveredMessageId(null); }}
                                     >
 
 
                                         {/* Message Bubble Wrapper */}
                                         <div className="relative max-w-[70%] flex flex-col gap-1 min-w-0">
                                             {/* Three-dot menu (left of mine, right of theirs) */}
-                                            {isHovered && (
-                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                            {(hoveredMessageId === msg._id || activeMenuId === msg._id) && (
+                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20 ${activeMenuId === msg._id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -865,8 +886,13 @@ export default function DMFloatingCard({
                                 );
                             })
                         )}
-                        {dmTypingUser && (
-                            <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* DM Typing Indicator - outside scroll area */}
+                    {dmTypingUser && (
+                        <div className="px-4 py-1.5 text-xs border-t shrink-0" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                            <div className="flex items-center gap-2">
                                 <div className="flex space-x-1">
                                     <span className="w-1.5 h-1.5 rounded-full typing-dot" style={{ backgroundColor: 'var(--accent-color)' }} />
                                     <span className="w-1.5 h-1.5 rounded-full typing-dot" style={{ backgroundColor: 'var(--accent-color)' }} />
@@ -874,14 +900,19 @@ export default function DMFloatingCard({
                                 </div>
                                 <span>{dmTypingUser} is typing...</span>
                             </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
+                        </div>
+                    )}
 
                     {/* Floating Pickers */}
                     {showEmojiPicker && (
-                        <div className="absolute bottom-[60px] left-2 z-50 shadow-2xl rounded-xl">
-                            <EmojiPicker onEmojiClick={(e: EmojiClickData) => setMessageText(prev => prev + e.emoji)} theme={darkMode ? EmojiTheme.DARK : EmojiTheme.LIGHT} width={300} height={350} />
+                        <div className="absolute bottom-[60px] z-50 shadow-2xl rounded-xl"
+                             style={{ left: '2px', maxWidth: 'calc(100% - 4px)' }}>
+                            <EmojiPicker 
+                                onEmojiClick={(e: EmojiClickData) => setMessageText(prev => prev + e.emoji)} 
+                                theme={darkMode ? EmojiTheme.DARK : EmojiTheme.LIGHT} 
+                                width={Math.min(300, window.innerWidth - 40)} 
+                                height={Math.min(350, 400)} 
+                            />
                         </div>
                     )}
 

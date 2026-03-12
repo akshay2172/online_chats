@@ -388,31 +388,25 @@ export default function ProfileCard({
                                             setProfileBlocked(true);
                                         }
                                     }}
-                                    className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
+                                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover-bg-secondary`}
                                     style={{
                                         color: profileBlocked ? '#22c55e' : '#ef4444',
                                         backgroundColor: 'transparent'
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     {profileBlocked ? '✓ Unblock User' : '⛔ Block User'}
                                 </button>
                                 <button
                                     onClick={() => { setShowOptionsPopup(false); if (onInviteToRoom) onInviteToRoom(displayProfile.username); }}
-                                    className="w-full text-left px-4 py-2.5 text-sm transition-colors"
+                                    className="w-full text-left px-4 py-2.5 text-sm transition-colors hover-bg-secondary"
                                     style={{ color: 'var(--text-primary)', backgroundColor: 'transparent' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     Invite to Room
                                 </button>
                                 <button
                                     onClick={() => { setShowOptionsPopup(false); if (onReportProfile) onReportProfile(displayProfile.username); }}
-                                    className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
+                                    className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover-bg-secondary"
                                     style={{ color: '#ef4444', backgroundColor: 'transparent' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
                                     Report Profile
                                 </button>

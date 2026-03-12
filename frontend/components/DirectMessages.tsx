@@ -159,10 +159,8 @@ export default function DirectMessages({
         >
           <button
             onClick={() => setActiveChat(null)}
-            className="p-1.5 rounded-lg transition-colors"
+            className="p-1.5 rounded-lg transition-colors hover-bg-secondary"
             style={{ color: 'var(--text-primary)' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -367,10 +365,8 @@ export default function DirectMessages({
               <div key={conv._id} className="relative group">
                 <button
                   onClick={() => openChat(conv)}
-                  className="w-full p-3 rounded-xl flex items-center gap-3 transition-all"
+                  className="w-full p-3 rounded-xl flex items-center gap-3 transition-all hover-bg-secondary"
                   style={{ backgroundColor: 'transparent' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {/* Avatar */}
                   <div className="relative shrink-0">
@@ -436,9 +432,7 @@ export default function DirectMessages({
                     >
                       <button
                         onClick={() => { onDeleteDM(conv._id); setShowMenu(null); }}
-                        className="w-full px-3 py-2 text-sm flex items-center gap-2 transition-colors text-red-500"
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="w-full px-3 py-2 text-sm flex items-center gap-2 transition-colors text-red-500 hover-bg-secondary"
                       >
                         <Trash2 className="w-4 h-4" />
                         <span>Delete Chat</span>

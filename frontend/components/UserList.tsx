@@ -246,21 +246,12 @@ const UserList: React.FC<Props> = ({
               e.stopPropagation();
               onStartDM(user.name);
             }}
-            className="p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+            className="p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all hover-bg-secondary hover-text-accent"
             style={{
               color: 'var(--text-muted)',
-              '--hover-bg': 'var(--bg-secondary)',
-              '--hover-color': 'var(--accent-color)'
-            } as React.CSSProperties}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
-              e.currentTarget.style.color = 'var(--accent-color)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
             }}
             title={`Message ${user.displayName || user.name}`}
+            aria-label={`Message ${user.displayName || user.name}`}
           >
             <MessageCircle className="w-4 h-4" />
           </button>
@@ -472,10 +463,7 @@ const UserList: React.FC<Props> = ({
               </div>
               <button
                 onClick={() => setSelectedUser(null)}
-                className="p-1 rounded transition-colors"
-                style={{ '--hover-bg': 'var(--bg-secondary)' } as React.CSSProperties}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                className="p-1 rounded transition-colors hover-bg-secondary"
               >
                 <X className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
               </button>

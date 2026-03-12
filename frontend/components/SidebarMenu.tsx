@@ -866,6 +866,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                             onClick={() => { setActivePanel(null); setSettingsTab(null); }}
                             className="flex items-center gap-2 text-base font-semibold transition-colors"
                             style={{ color: 'var(--text-primary)' }}
+                            aria-label="Go back"
                         >
                             <ChevronLeft className="w-5 h-5" />
                             {panelTitle}
@@ -893,6 +894,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                         onClick={props.onClose}
                         className="p-2 rounded-lg transition-colors hover:opacity-80"
                         style={{ color: 'var(--text-muted)' }}
+                        aria-label="Close menu"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -914,10 +916,8 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                                                 setActivePanel(item.panel);
                                             }
                                         }}
-                                        className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-150 group"
+                                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-150 group ${item.danger ? 'hover:bg-red-500/10' : 'hover-bg-secondary'}`}
                                         style={{ backgroundColor: 'transparent' }}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = item.danger ? 'rgba(239,68,68,0.1)' : 'var(--bg-secondary)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     >
                                         <div className="flex items-center gap-3">
                                             <span

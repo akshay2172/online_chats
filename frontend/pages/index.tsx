@@ -38,22 +38,39 @@ export default function Home() {
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const router = useRouter();
+
+  const addToast = (text: string) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, text }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  };
 
   // Check if user is already logged in
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     const savedUsername = localStorage.getItem('username');
 
-    if (token && savedUsername) {
-      // Auto-redirect to guest entry (they can still choose to login)
-      setUsername(savedUsername);
-      setGender(localStorage.getItem('gender') || '');
-      setCountry(localStorage.getItem('country') || '');
-      setIsLoggedIn(true);
-      setView('guest');
-    }
-  }, []);
+      if (token && savedUsername) {
+        setUsername(savedUsername);
+        const genderVal = localStorage.getItem('gender') || 'other';
+        const countryVal = localStorage.getItem('country') || 'Unknown';
+        setGender(genderVal);
+        setCountry(countryVal);
+        setIsLoggedIn(true);
+
+        // Auto-join general chat if already logged in
+        router.push({
+          pathname: '/room/general chat',
+          query: {
+            username: savedUsername,
+            gender: genderVal,
+            country: countryVal,
+          }
+        });
+      }
+    }, [router]);
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -70,23 +87,34 @@ export default function Home() {
         localStorage.setItem('accessToken', data.accessToken);
         if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('username', data.username);
-        localStorage.setItem('gender', data.gender || 'other');
-        localStorage.setItem('country', data.country || 'Unknown');
+        const genderVal = data.gender || 'other';
+        const countryVal = data.country || 'Unknown';
+        localStorage.setItem('gender', genderVal);
+        localStorage.setItem('country', countryVal);
         if (data.avatar) localStorage.setItem('avatar', data.avatar);
         if (data.bio) localStorage.setItem('bio', data.bio);
         if (data.displayName) localStorage.setItem('displayName', data.displayName);
 
         setUsername(data.username);
-        setGender(data.gender || 'other');
-        setCountry(data.country || 'Unknown');
+        setGender(genderVal);
+        setCountry(countryVal);
         setIsLoggedIn(true);
-        setView('guest'); // Show room selection
+
+        // Auto-join general chat
+        router.push({
+          pathname: '/room/general chat',
+          query: {
+            username: data.username,
+            gender: genderVal,
+            country: countryVal,
+          }
+        });
       } else {
         const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
-        alert('Login failed: ' + (errorMessage || 'Please try again'));
+        addToast('Login failed: ' + (errorMessage || 'Please try again'));
       }
     } catch (error) {
-      alert('Login error. Please check your connection.');
+      addToast('Login error. Please check your connection.');
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +122,7 @@ export default function Home() {
 
   const handleSignup = async () => {
     if (!username || !email || !password || !gender || !country) {
-      alert('Please fill all fields');
+      addToast('Please fill all fields');
       return;
     }
 
@@ -116,24 +144,24 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        alert('Account created successfully! Please login.');
+        addToast('Account created! Please login.');
         setView('login');
         setPassword(''); // Clear password
       } else {
         const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
-        alert('Signup failed: ' + (errorMessage || 'Please try again'));
+        addToast('Signup failed: ' + (errorMessage || 'Please try again'));
       }
     } catch (error) {
-      alert('Signup error. Please check your connection.');
+      addToast('Signup error. Please check your connection.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const joinRoom = () => {
-    if (!username.trim()) return alert('Please enter a username');
-    if (!gender) return alert('Please select your gender');
-    if (!country) return alert('Please select your country');
+    if (!username.trim()) return addToast('Please enter a username');
+    if (!gender) return addToast('Please select your gender');
+    if (!country) return addToast('Please select your country');
 
     const room = 'general chat';
     router.push({
@@ -526,6 +554,15 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <div className="fixed top-5 right-5 space-y-3 z-50">
+        {toasts.map(toast => (
+          <div key={toast.id} className="bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg text-sm animate-slide-in-right max-w-sm">
+            {toast.text}
+          </div>
+        ))}
+      </div>
+
     </div>
   );
 }

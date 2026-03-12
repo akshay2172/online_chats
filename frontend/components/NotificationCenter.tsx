@@ -227,10 +227,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ '--hover-bg': 'var(--bg-secondary)' } as React.CSSProperties}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              className="p-1.5 rounded-lg transition-colors hover-bg-secondary"
               title="Mark all as read"
             >
               <CheckCheck className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
@@ -241,10 +238,7 @@ export default function NotificationCenter({ username, onNotificationClick, inli
           {!inline && (
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ '--hover-bg': 'var(--bg-secondary)' } as React.CSSProperties}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              className="p-1.5 rounded-lg transition-colors hover-bg-secondary"
             >
               <X className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </button>
@@ -273,18 +267,13 @@ export default function NotificationCenter({ username, onNotificationClick, inli
                 key={notification._id}
                 className="group relative"
               >
-                <button
-                  onClick={() => handleNotificationClick(notification)}
-                  className="w-full p-4 text-left transition-colors"
-                  style={{
-                    backgroundColor: notification.isRead ? 'transparent' : 'var(--bg-secondary)',
-                    '--hover-bg': 'var(--bg-tertiary)'
-                  } as React.CSSProperties}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = notification.isRead ? 'transparent' : 'var(--bg-secondary)';
-                  }}
-                >
+                  <button
+                    onClick={() => handleNotificationClick(notification)}
+                    className={`w-full p-4 text-left transition-colors hover-bg-tertiary ${notification.isRead ? '' : 'bg-secondary'}`}
+                    style={{
+                      backgroundColor: notification.isRead ? 'transparent' : 'var(--bg-secondary)',
+                    }}
+                  >
                   <div className="flex gap-3">
                     {/* Icon */}
                     <div className="shrink-0">
@@ -315,19 +304,16 @@ export default function NotificationCenter({ username, onNotificationClick, inli
                 </button>
 
                 {/* Delete Button (on hover) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteNotification(notification._id);
-                  }}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                  style={{
-                    backgroundColor: 'var(--bg-primary)',
-                    '--hover-bg': 'rgba(239, 68, 68, 0.1)'
-                  } as React.CSSProperties}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-primary)'}
-                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(notification._id);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/10"
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                    }}
+                  >
                   <Trash2 className="w-3.5 h-3.5 text-red-500" />
                 </button>
               </div>
@@ -345,16 +331,13 @@ export default function NotificationCenter({ username, onNotificationClick, inli
   return (
     <div className="relative">
       {/* Bell Icon Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-lg transition-colors"
-        style={{
-          backgroundColor: isOpen ? 'var(--bg-secondary)' : 'transparent',
-          '--hover-bg': 'var(--bg-secondary)'
-        } as React.CSSProperties}
-        onMouseEnter={(e) => !isOpen && (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
-        onMouseLeave={(e) => !isOpen && (e.currentTarget.style.backgroundColor = 'transparent')}
-      >
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={`relative p-2 rounded-lg transition-colors ${isOpen ? '' : 'hover-bg-secondary'}`}
+          style={{
+            backgroundColor: isOpen ? 'var(--bg-secondary)' : 'transparent',
+          }}
+        >
         <Bell className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
 
         {/* Unread Badge */}

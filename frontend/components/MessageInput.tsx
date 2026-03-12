@@ -528,10 +528,7 @@ const MessageInput: React.FC<Props> = ({
           </div>
           <button
             onClick={onCancelReply}
-            className="p-1 rounded-full transition-colors shrink-0"
-            style={{ '--hover-bg': 'var(--bg-tertiary)' } as React.CSSProperties}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-1 rounded-full transition-colors shrink-0 hover-bg-tertiary"
           >
             <X className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
           </button>
@@ -562,10 +559,7 @@ const MessageInput: React.FC<Props> = ({
           </div>
           <button
             onClick={() => setSelectedFile(null)}
-            className="p-1 rounded-full transition-colors shrink-0"
-            style={{ '--hover-bg': 'var(--bg-tertiary)' } as React.CSSProperties}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            className="p-1 rounded-full transition-colors shrink-0 hover-bg-tertiary"
           >
             <X className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
           </button>
@@ -605,16 +599,13 @@ const MessageInput: React.FC<Props> = ({
         >
           {filteredUsers.map(user => (
             <button
-              key={user}
-              onClick={() => handleMentionSelect(user)}
-              className="w-full px-4 py-2 text-left flex items-center gap-2 transition-colors"
-              style={{
-                color: 'var(--text-primary)',
-                '--hover-bg': 'var(--menu-hover)'
-              } as React.CSSProperties}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--menu-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
+               key={user}
+               onClick={() => handleMentionSelect(user)}
+               className="w-full px-4 py-2 text-left flex items-center gap-2 transition-colors hover-bg-menu"
+               style={{
+                 color: 'var(--text-primary)',
+               }}
+             >
               <AtSign className="w-4 h-4" style={{ color: 'var(--accent-color)' }} />
               <span className="text-sm">{user}</span>
             </button>
@@ -737,19 +728,9 @@ const MessageInput: React.FC<Props> = ({
         <div className="relative shrink-0">
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-2 rounded-full transition-colors"
+            className="p-2 rounded-full transition-colors hover-bg-secondary hover-text-primary"
             style={{
               color: 'var(--text-muted)',
-              '--hover-bg': 'var(--bg-secondary)',
-              '--hover-color': 'var(--text-primary)'
-            } as React.CSSProperties}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
-              e.currentTarget.style.color = 'var(--text-primary)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
             }}
             title="More options"
           >

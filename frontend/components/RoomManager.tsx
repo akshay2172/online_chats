@@ -384,9 +384,7 @@ export default function RoomManager({
               </h3>
               <button
                 onClick={() => setShowCreate(false)}
-                className="p-1 rounded transition-colors"
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                className="p-1 rounded transition-colors hover-bg-secondary"
               >
                 <X className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
               </button>

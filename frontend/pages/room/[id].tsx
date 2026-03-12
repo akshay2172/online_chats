@@ -894,14 +894,14 @@ export default function Room() {
             />
 
 
-            <div className="flex gap-4 p-5 h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+            <div className="flex gap-0 sm:gap-4 p-0 sm:p-5 h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                 <div className="flex flex-col min-w-0 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 relative" style={{ flex: 1, backgroundColor: 'var(--bg-primary)' }}>
 
                     {/* Header */}
-                    <div className="px-6 py-4 z-10 border-b flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                    <div className="px-3 sm:px-6 py-3 sm:py-4 z-10 border-b flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3 flex-1 overflow-hidden">
-                                <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg relative transition-colors mr-2 group shrink-0" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                                <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg relative transition-colors mr-2 group shrink-0" style={{ backgroundColor: 'var(--bg-secondary)' }} aria-label="Open menu">
                                     <Menu className="w-6 h-6" style={{ color: 'var(--text-primary)' }} />
                                     {unreadCount > 0 && <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center transform scale-90 translate-x-1 -translate-y-1">{unreadCount}</span>}
                                 </button>
@@ -1006,7 +1006,7 @@ export default function Room() {
                                     <span className="font-medium" style={{ color: 'var(--text-muted)' }}>{localQuery?.displayName || activeUsername}</span>
                                 </div>
 
-                                <button onClick={() => setShowUserList(!showUserList)} className={`p-2 rounded-xl transition-all relative shadow-sm ${showUserList ? 'bg-blue-500 text-white shadow-blue-500/20 hover:bg-blue-600' : 'hover:opacity-80'}`} style={{ backgroundColor: !showUserList ? 'var(--bg-secondary)' : undefined, color: !showUserList ? 'var(--text-secondary)' : undefined }}>
+                                <button onClick={() => setShowUserList(!showUserList)} className={`p-2 rounded-xl transition-all relative shadow-sm ${showUserList ? 'bg-blue-500 text-white shadow-blue-500/20 hover:bg-blue-600' : 'hover:opacity-80'}`} style={{ backgroundColor: !showUserList ? 'var(--bg-secondary)' : undefined, color: !showUserList ? 'var(--text-secondary)' : undefined }} aria-label="Toggle user list">
                                     <Users className="w-5 h-5" />
                                     {users.length > 0 && <span className={`absolute -top-1.5 -right-1.5 text-[10px] font-bold rounded-lg px-1.5 py-0.5 border-2 ${showUserList ? 'bg-white text-blue-500 border-blue-500' : 'bg-blue-500 text-white border-white dark:border-gray-800'}`}>{users.length}</span>}
                                 </button>
@@ -1068,8 +1068,16 @@ export default function Room() {
                     />
                 </div>
 
-                <div className="shrink-0 transition-all duration-300 ease-in-out overflow-hidden h-full" style={{ width: showUserList ? '288px' : '0px', opacity: showUserList ? 1 : 0 }}>
+                <div className={`shrink-0 transition-all duration-300 ease-in-out overflow-hidden h-full ${showUserList ? 'w-72' : 'w-0'} hidden lg:block`} style={{ opacity: showUserList ? 1 : 0 }}>
                     <div className="w-72 h-full">
+                        <UserList users={users} currentUser={activeUsername} isOpen={true} showToggle={false} onStartDM={!isGuest ? handleStartDM : undefined} onViewProfile={handleViewProfile} />
+                    </div>
+                </div>
+
+                {/* Mobile User List Overlay */}
+                <div className={`fixed inset-0 z-40 lg:hidden ${showUserList ? 'block' : 'hidden'}`}>
+                    <div className="absolute inset-0 bg-black/50" onClick={() => setShowUserList(false)} />
+                    <div className="absolute right-0 top-0 h-full w-80 max-w-[85vw] shadow-xl" style={{ backgroundColor: 'var(--bg-primary)' }}>
                         <UserList users={users} currentUser={activeUsername} isOpen={true} showToggle={false} onStartDM={!isGuest ? handleStartDM : undefined} onViewProfile={handleViewProfile} />
                     </div>
                 </div>
@@ -1146,6 +1154,7 @@ export default function Room() {
                     onClick={() => setShowDMCard(true)}
                     className="fixed bottom-5 right-5 z-40 p-3.5 rounded-full shadow-lg transition-all hover:scale-110 bg-gradient-to-r from-blue-500 to-purple-500 text-white"
                     title="Direct Messages"
+                    aria-label="Open direct messages"
                 >
                     <MessageCircle className="w-6 h-6" />
                     {dmUnreadTotal > 0 && (
