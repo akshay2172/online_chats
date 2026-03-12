@@ -258,12 +258,13 @@ export class ChatService {
           else if (room.moderators?.includes(u.name)) role = 'moderator';
         }
 
-        // Fetch globalRole and displayName from DB
-        const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole displayName').lean();
+        // Fetch globalRole, displayName, and avatar from DB
+        const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole displayName avatar').lean();
         const globalRole = dbUser?.globalRole || 'user';
         const displayName = dbUser?.displayName || u.displayName || u.name;
+        const avatar = dbUser?.avatar || u.avatar;
 
-        return { ...u, role, globalRole, displayName };
+        return { ...u, role, globalRole, displayName, avatar };
       })
     );
 
