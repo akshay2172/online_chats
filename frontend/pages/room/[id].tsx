@@ -772,16 +772,27 @@ export default function Room() {
                 const imageData = e.target?.result as string;
                 socket.emit('uploadAvatar', { imageData, filename: file.name });
 
-                // Listen for response
-                const onAvatarUpdated = (data: any) => {
+                const cleanup = () => {
                     socket.off('avatarUpdated', onAvatarUpdated);
+                    socket.off('error', onError);
+                };
+
+                const onAvatarUpdated = (data: any) => {
+                    cleanup();
                     resolve(data.avatarUrl);
                 };
+
+                const onError = (data: any) => {
+                    cleanup();
+                    reject(new Error(data.message || 'Failed to upload avatar'));
+                };
+
                 socket.on('avatarUpdated', onAvatarUpdated);
+                socket.on('error', onError);
 
                 // Timeout
                 setTimeout(() => {
-                    socket.off('avatarUpdated', onAvatarUpdated);
+                    cleanup();
                     reject(new Error('Avatar upload timeout'));
                 }, 10000);
             };
