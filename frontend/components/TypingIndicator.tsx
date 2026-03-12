@@ -26,7 +26,7 @@ const TypingIndicator: React.FC<Props> = ({ users }) => {
   return (
     <div 
       className="flex items-center space-x-2 px-4 py-2 text-sm"
-      style={{ color: 'var(--text-muted)' }}
+      style={{ color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)' }}
     >
       <div className="flex space-x-1">
         <span 

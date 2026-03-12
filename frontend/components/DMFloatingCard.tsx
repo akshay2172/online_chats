@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useDarkMode } from '../pages/_app';
+import socket from '../utils/socket';
 
 interface DMConversation {
     _id: string;
@@ -128,6 +129,10 @@ export default function DMFloatingCard({
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editMessageText, setEditMessageText] = useState('');
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+    const [menuPosition, setMenuPosition] = useState<'top' | 'bottom'>('bottom');
+
+    const [dmTypingUser, setDmTypingUser] = useState<string | null>(null);
+    const dmTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // DM Message Search
     const [showDMSearch, setShowDMSearch] = useState(false);
@@ -141,6 +146,8 @@ export default function DMFloatingCard({
     const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+    const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { darkMode } = useDarkMode();
@@ -183,6 +190,16 @@ export default function DMFloatingCard({
             onMarkDMAsRead(activeChat._id);
         }
     }, [isOpen, isMinimized, activeChat, activeChat?.unreadCount, onMarkDMAsRead]);
+
+    useEffect(() => {
+        const handleDMTyping = (data: { conversationId: string; username: string; isTyping: boolean }) => {
+            if (activeChat && data.conversationId === activeChat._id) {
+                setDmTypingUser(data.isTyping ? data.username : null);
+            }
+        };
+        socket.on('dmUserTyping', handleDMTyping);
+        return () => { socket.off('dmUserTyping', handleDMTyping); };
+    }, [activeChat]);
 
     const openChat = (conv: DMConversation) => {
         setActiveChat(conv);
@@ -587,7 +604,11 @@ export default function DMFloatingCard({
                     </div>
 
                     {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 relative" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                    <div
+                        ref={chatContainerRef}
+                        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 relative"
+                        style={{ backgroundColor: 'var(--bg-secondary)' }}
+                    >
                         {dmMessages.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center" style={{ color: 'var(--text-muted)' }}>
                                 <MessageCircle className="w-12 h-12 mb-3 opacity-20" />
@@ -606,6 +627,13 @@ export default function DMFloatingCard({
                                 return (
                                     <div
                                         key={msg._id}
+                                        ref={(el: HTMLDivElement | null) => {
+                                            if (el) {
+                                                messageRefs.current.set(msg._id, el);
+                                            } else {
+                                                messageRefs.current.delete(msg._id);
+                                            }
+                                        }}
                                         className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-full group`}
                                         onMouseEnter={() => setHoveredMessageId(msg._id)}
                                         onMouseLeave={() => { if (activeMenuId !== msg._id) setHoveredMessageId(null); }}
@@ -616,9 +644,25 @@ export default function DMFloatingCard({
                                         <div className="relative max-w-[70%] flex flex-col gap-1 min-w-0">
                                             {/* Three-dot menu (left of mine, right of theirs) */}
                                             {isHovered && (
-                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-0 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (activeMenuId === msg._id) {
+                                                                setActiveMenuId(null);
+                                                            } else {
+                                                                // Calculate position
+                                                                const msgEl = messageRefs.current.get(msg._id);
+                                                                const chatEl = chatContainerRef.current;
+                                                                if (msgEl && chatEl) {
+                                                                    const msgRect = msgEl.getBoundingClientRect();
+                                                                    const chatRect = chatEl.getBoundingClientRect();
+                                                                    const spaceBelow = chatRect.bottom - msgRect.bottom;
+                                                                    setMenuPosition(spaceBelow < 300 ? 'top' : 'bottom');
+                                                                }
+                                                                setActiveMenuId(msg._id);
+                                                            }
+                                                        }}
                                                         className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
                                                         title="More options"
                                                     >
@@ -628,7 +672,7 @@ export default function DMFloatingCard({
                                             {/* Dropdown Menu */}
                                             {activeMenuId === msg._id && (
                                                 <div
-                                                    className={`absolute ${isMine ? 'right-0' : 'left-0'} top-full mt-1 rounded-xl shadow-xl py-1.5 min-w-[160px] z-30 border`}
+                                                    className={`absolute ${isMine ? 'right-0' : 'left-0'} ${menuPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'} rounded-xl shadow-xl py-1.5 min-w-[160px] z-30 border`}
                                                     style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
@@ -821,6 +865,16 @@ export default function DMFloatingCard({
                                 );
                             })
                         )}
+                        {dmTypingUser && (
+                            <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                                <div className="flex space-x-1">
+                                    <span className="w-1.5 h-1.5 rounded-full typing-dot" style={{ backgroundColor: 'var(--accent-color)' }} />
+                                    <span className="w-1.5 h-1.5 rounded-full typing-dot" style={{ backgroundColor: 'var(--accent-color)' }} />
+                                    <span className="w-1.5 h-1.5 rounded-full typing-dot" style={{ backgroundColor: 'var(--accent-color)' }} />
+                                </div>
+                                <span>{dmTypingUser} is typing...</span>
+                            </div>
+                        )}
                         <div ref={messagesEndRef} />
                     </div>
 
@@ -916,6 +970,24 @@ export default function DMFloatingCard({
                                             // Auto-resize
                                             e.target.style.height = 'auto';
                                             e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+
+                                            // Emit typing
+                                            if (activeChat) {
+                                                socket.emit('dmTyping', {
+                                                    conversationId: activeChat._id,
+                                                    receiverUsername: activeChat.otherUser.username,
+                                                    isTyping: true
+                                                });
+                                                // Clear previous timeout and set new one to emit stop typing after 2s
+                                                if (dmTypingTimeoutRef.current) clearTimeout(dmTypingTimeoutRef.current);
+                                                dmTypingTimeoutRef.current = setTimeout(() => {
+                                                    socket.emit('dmTyping', {
+                                                        conversationId: activeChat._id,
+                                                        receiverUsername: activeChat.otherUser.username,
+                                                        isTyping: false
+                                                    });
+                                                }, 2000);
+                                            }
                                         }}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey) {

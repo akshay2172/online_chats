@@ -896,6 +896,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     });
   }
 
+  @SubscribeMessage('dmTyping')
+  handleDMTyping(
+    @MessageBody() data: { conversationId: string; receiverUsername: string; isTyping: boolean },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    const username = client.data.user?.username;
+    if (!username) return;
+
+    const receiverSockets = this.chatService.getUserSocketIds(data.receiverUsername);
+    for (const socketId of receiverSockets) {
+      this.server.to(socketId).emit('dmUserTyping', {
+        conversationId: data.conversationId,
+        username,
+        isTyping: data.isTyping,
+      });
+    }
+  }
+
   @SubscribeMessage('updateProfile')
   async handleUpdateProfile(
     @MessageBody() data: {

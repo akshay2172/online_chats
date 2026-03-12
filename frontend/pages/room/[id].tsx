@@ -526,6 +526,7 @@ export default function Room() {
             socket.off('messageUnpinned');
             socket.off('mention');
             socket.off('userTyping');
+            socket.off('dmUserTyping');
             socket.off('error');
             socket.off('roomCountInfo');
             socket.off('roomBans');
