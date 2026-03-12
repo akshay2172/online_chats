@@ -262,7 +262,7 @@ export class ChatService {
         const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole displayName avatar').lean();
         const globalRole = dbUser?.globalRole || 'user';
         const displayName = dbUser?.displayName || u.displayName || u.name;
-        const avatar = dbUser?.avatar || u.avatar;
+        const avatar = dbUser?.avatar || null;
 
         return { ...u, role, globalRole, displayName, avatar };
       })
