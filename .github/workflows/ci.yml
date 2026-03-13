@@ -42,7 +42,7 @@ jobs:
       - name: Run tests  
         run: npx jest --passWithNoTests  
         env:  
-          MONGODB_URI: mongodb://localhost:27017/test  
+          MONGODB_URI: mongodb://localhost:27017/db_user  
           JWT_SECRET: ci-test-secret  
           PORT: 3001  
   
