@@ -125,7 +125,6 @@ export default function DMFloatingCard({
     const [isLoadingGifs, setIsLoadingGifs] = useState(false);
 
     // Hover & Edit & Menu
-    const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editMessageText, setEditMessageText] = useState('');
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -204,7 +203,6 @@ export default function DMFloatingCard({
     useEffect(() => {
         const handleClickOutside = () => {
             setActiveMenuId(null);
-            setHoveredMessageId(null);
         };
         if (activeMenuId !== null) {
             document.addEventListener('click', handleClickOutside);
@@ -644,7 +642,6 @@ export default function DMFloatingCard({
                                 : dmMessages
                             ).map((msg, index) => {
                                 const isMine = msg.sender === currentUser;
-                                const isHovered = hoveredMessageId === msg._id || activeMenuId === msg._id;
                                 const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
                                 return (
@@ -664,8 +661,7 @@ export default function DMFloatingCard({
                                         {/* Message Bubble Wrapper */}
                                         <div className="relative max-w-[70%] flex flex-col gap-1 min-w-0">
                                             {/* Three-dot menu (left of mine, right of theirs) */}
-                                            {(hoveredMessageId === msg._id || activeMenuId === msg._id) && (
-                                                <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20 ${activeMenuId === msg._id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
+                                            <div className={`flex gap-0.5 shrink-0 rounded-lg shadow-sm border p-0.5 absolute ${isMine ? 'right-full mr-1' : 'left-full ml-1'} top-1/2 -translate-y-1/2 z-20 ${activeMenuId === msg._id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -793,8 +789,7 @@ export default function DMFloatingCard({
                                                     )}
                                                 </div>
                                             )}
-                                                </div>
-                                            )}
+                                        </div>
 
                                             {/* Message Bubble */}
                                             <div

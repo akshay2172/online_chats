@@ -52,25 +52,14 @@ export default function Home() {
     const token = localStorage.getItem('accessToken');
     const savedUsername = localStorage.getItem('username');
 
-      if (token && savedUsername) {
+    if (token && savedUsername) {
         setUsername(savedUsername);
-        const genderVal = localStorage.getItem('gender') || 'other';
-        const countryVal = localStorage.getItem('country') || 'Unknown';
-        setGender(genderVal);
-        setCountry(countryVal);
+        setGender(localStorage.getItem('gender') || 'other');
+        setCountry(localStorage.getItem('country') || 'Unknown');
         setIsLoggedIn(true);
-
-        // Auto-join general chat if already logged in
-        router.push({
-          pathname: '/room/general chat',
-          query: {
-            username: savedUsername,
-            gender: genderVal,
-            country: countryVal,
-          }
-        });
-      }
-    }, [router]);
+        setView('guest'); // Show room selection screen, don't auto-redirect
+    }
+  }, []);
 
   const handleLogin = async () => {
     setIsLoading(true);
