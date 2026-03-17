@@ -10,6 +10,7 @@ import { ModerationLog, ModerationLogDocument } from '../schemas/moderation-log.
 import { DMConversation, DMConversationDocument } from '../schemas/dm-conversation.schema';
 import { DMMessage, DMMessageDocument } from '../schemas/dm-message.schema';
 import { FriendRequest, FriendRequestDocument } from '../schemas/friend-request.schema';
+import { RedisService } from '../redis/redis.service';
 
 export interface RoomUser {
   name: string;
@@ -25,11 +26,6 @@ export interface RoomUser {
 
 @Injectable()
 export class ChatService {
-  private activeUsers: Record<string, RoomUser[]> = {};
-  private bannedUsers: Map<string, Set<string>> = new Map(); // room -> set of banned usernames
-
-  // Map username -> socketId for DM delivery
-  private userSocketMap: Map<string, string[]> = new Map();
 
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
@@ -40,39 +36,35 @@ export class ChatService {
     @InjectModel(DMConversation.name) private dmConversationModel: Model<DMConversationDocument>,
     @InjectModel(DMMessage.name) private dmMessageModel: Model<DMMessageDocument>,
     @InjectModel(FriendRequest.name) private friendRequestModel: Model<FriendRequestDocument>,
+    private redisService: RedisService,
   ) {
     // Auto-delete inactive rooms every 24 hours on startup
     setInterval(() => this.autoDeleteInactiveRooms(), 24 * 60 * 60 * 1000);
   }
 
-  // User Management
-  addUserToRoom(room: string, user: RoomUser) {
-    if (!this.activeUsers[room]) {
-      this.activeUsers[room] = [];
-    }
-
-    // ✅ FIX: Check by socketId only (not username)
-    // This allows multiple users with the same username
-    const existingIndex = this.activeUsers[room].findIndex(u => u.socketId === user.socketId);
-
-    if (existingIndex === -1) {
-      // New user - add to room
-      this.activeUsers[room].push(user);
-      console.log(`✅ User ${user.name} (${user.socketId}) added to ${room} - chat.service.ts:44`);
-    } else {
-      // Existing user - update their data
-      this.activeUsers[room][existingIndex] = user;
-      console.log(`✅ User ${user.name} (${user.socketId}) updated in ${room} - chat.service.ts:48`);
-    }
+  private get redis() {
+    return this.redisService.getClient();
   }
 
-  getUsersInRoom(room: string): RoomUser[] {
-    return this.activeUsers[room] || [];
+  // User Management
+  async addUserToRoom(room: string, user: RoomUser) {
+    // Store user data as JSON in a Redis hash, keyed by socketId
+    await this.redis.hSet(
+      `room:users:${room}`,
+      user.socketId,
+      JSON.stringify(user),
+    );
+    console.log(`✅ User ${user.name} (${user.socketId}) added to ${room}`);
+  }
+
+  async getUsersInRoom(room: string): Promise<RoomUser[]> {
+    const data = await this.redis.hGetAll(`room:users:${room}`);
+    return Object.values(data).map((json) => JSON.parse(json));
   }
 
   // ✅ FIX: Returns a deduplicated list of users by username
-  getUniqueUsersInRoom(room: string): RoomUser[] {
-    const allUsers = this.getUsersInRoom(room);
+  async getUniqueUsersInRoom(room: string): Promise<RoomUser[]> {
+    const allUsers = await this.getUsersInRoom(room);
     const uniqueMap = new Map<string, RoomUser>();
     for (const user of allUsers) {
       if (!uniqueMap.has(user.name)) {
@@ -214,41 +206,38 @@ export class ChatService {
   }
 
 
-  removeUserFromRoom(room: string, usernameOrSocketId: string) {
-    if (!this.activeUsers[room]) return;
-
-    // ✅ FIX: Remove by socketId to handle duplicate usernames
-    // Also support removal by username for backward compatibility
-    const initialCount = this.activeUsers[room].length;
-
-    this.activeUsers[room] = this.activeUsers[room].filter(
-      u => u.socketId !== usernameOrSocketId && u.name !== usernameOrSocketId
-    );
-
-    const removed = initialCount - this.activeUsers[room].length;
-    if (removed > 0) {
-      console.log(`✅ Removed ${removed} user(s) from ${room} - chat.service.ts:113`);
+  async removeUserFromRoom(room: string, usernameOrSocketId: string) {
+    const users = await this.getUsersInRoom(room);
+    for (const user of users) {
+      if (user.socketId === usernameOrSocketId || user.name === usernameOrSocketId) {
+        await this.redis.hDel(`room:users:${room}`, user.socketId);
+      }
     }
   }
 
-  getRoomsBySocket(socketId: string) {
-    const results: { room: string, user: any }[] = [];
-    for (const room in this.activeUsers) {
-      const user = this.activeUsers[room].find(u => u.socketId === socketId);
-      if (user) results.push({ room, user });
+  async getRoomsBySocket(socketId: string): Promise<{ room: string; user: RoomUser }[]> {
+    const results: { room: string; user: RoomUser }[] = [];
+    // Scan for all room:users:* keys
+    const keys = await this.redis.keys('room:users:*');
+    for (const key of keys) {
+      const json = await this.redis.hGet(key, socketId);
+      if (json) {
+        const room = key.replace('room:users:', '');
+        results.push({ room, user: JSON.parse(json as string) });
+      }
     }
     return results;
   }
 
-  getUserSocketId(room: string, username: string): string | undefined {
-    const user = this.activeUsers[room]?.find(u => u.name === username);
-    return user?.socketId;
+  async getUserSocketId(room: string, username: string): Promise<string | undefined> {
+    const users = await this.getUsersInRoom(room);
+    return users.find((u) => u.name === username)?.socketId;
   }
 
   // Returns active users with roles read dynamically from the DB
   async getUsersInRoomWithRoles(roomName: string): Promise<any[]> {
     const room = await this.roomModel.findOne({ name: roomName });
-    const active = this.getUniqueUsersInRoom(roomName);
+    const active = await this.getUniqueUsersInRoom(roomName);
 
     const usersWithRoles = await Promise.all(
       active.map(async u => {
@@ -307,12 +296,6 @@ export class ChatService {
         await room.save();
       }
     }
-
-    // In-memory cache
-    if (!this.bannedUsers.has(roomName)) {
-      this.bannedUsers.set(roomName, new Set());
-    }
-    this.bannedUsers.get(roomName)?.add(username);
   }
 
   async isUserBanned(roomName: string, username: string): Promise<boolean> {
@@ -353,8 +336,6 @@ export class ChatService {
       room.bannedUsers = room.bannedUsers.filter(u => u !== username);
       await room.save();
     }
-
-    this.bannedUsers.get(roomName)?.delete(username);
   }
 
   async getRoomBans(roomName: string): Promise<RoomBanDocument[]> {
@@ -843,8 +824,8 @@ export class ChatService {
       const staleRooms = await this.roomModel.find({ isActive: true });
 
       for (const room of staleRooms) {
-        // Skip rooms that have currently active in-memory users
-        const activeInRoom = this.activeUsers[room.name];
+        // Skip rooms that have currently active users
+        const activeInRoom = await this.getUsersInRoom(room.name);
         if (activeInRoom && activeInRoom.length > 0) continue;
 
         // Check last message timestamp
@@ -867,26 +848,21 @@ export class ChatService {
 
   // ==================== DM SYSTEM ====================
 
-  registerUserSocket(username: string, socketId: string) {
-    const existing = this.userSocketMap.get(username) || [];
-    if (!existing.includes(socketId)) {
-      existing.push(socketId);
-    }
-    this.userSocketMap.set(username, existing);
+  async registerUserSocket(username: string, socketId: string) {
+    await this.redis.sAdd(`user:sockets:${username}`, socketId);
   }
 
-  unregisterUserSocket(username: string, socketId: string) {
-    const existing = this.userSocketMap.get(username) || [];
-    const updated = existing.filter(s => s !== socketId);
-    if (updated.length === 0) {
-      this.userSocketMap.delete(username);
-    } else {
-      this.userSocketMap.set(username, updated);
+  async unregisterUserSocket(username: string, socketId: string) {
+    await this.redis.sRem(`user:sockets:${username}`, socketId);
+    // Clean up empty sets
+    const remaining = await this.redis.sCard(`user:sockets:${username}`);
+    if (remaining === 0) {
+      await this.redis.del(`user:sockets:${username}`);
     }
   }
 
-  getUserSocketIds(username: string): string[] {
-    return this.userSocketMap.get(username) || [];
+  async getUserSocketIds(username: string): Promise<string[]> {
+    return await this.redis.sMembers(`user:sockets:${username}`);
   }
 
   async getOrCreateDMConversation(user1: string, user2: string): Promise<DMConversationDocument> {

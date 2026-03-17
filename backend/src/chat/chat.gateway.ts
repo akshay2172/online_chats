@@ -16,6 +16,9 @@ import { InputSanitizer, ContentModerator } from '../utils/input-sanitizer';
 import { SecurityLogger } from '../utils/security-logger';
 import { NotificationService } from '../notification/notification.service';
 import { UploadService } from '../upload/upload.service';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
+import { RedisService } from '../redis/redis.service';
 
 @WebSocketGateway({
   cors: {
@@ -26,7 +29,13 @@ import { UploadService } from '../upload/upload.service';
 })
 export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewayConnection {
 
-  afterInit(server: Server) {
+  async afterInit(server: Server) {
+    // Redis adapter for multi-server Socket.io
+    const pubClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+    const subClient = pubClient.duplicate();
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    server.adapter(createAdapter(pubClient, subClient));
+
     // Apply authentication middleware
     server.use(socketAuthMiddleware);
 
@@ -37,20 +46,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     server.use((socket: Socket, next) => IPBanList.middleware(socket, next));
 
     SecurityLogger.logServerStart();
-    console.log('✅ Secure WebSocket Gateway initialized - chat.gateway.ts:36');
+    console.log('✅ Secure WebSocket Gateway initialized with Redis adapter');
   }
 
   constructor(
     private chatService: ChatService,
     private notificationService: NotificationService,
     private uploadService: UploadService,
+    private redisService: RedisService,
   ) { }
 
   @WebSocketServer()
   server: Server;
 
-  // Rate limiting storage
-  private messageRateLimit: Map<string, number[]> = new Map();
   private readonly RATE_LIMIT_WINDOW = 2000; // 1 minute
   private readonly RATE_LIMIT_MAX = 2; // 30 messages per minute
 
@@ -75,7 +83,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         // Mark all undelivered DMs as delivered
         const undeliveredMessages = await this.chatService.markPendingDMsAsDelivered(username);
         for (const msg of undeliveredMessages) {
-          const senderSockets = this.chatService.getUserSocketIds(msg.sender);
+          const senderSockets = await this.chatService.getUserSocketIds(msg.sender);
           for (const socketId of senderSockets) {
             this.server.to(socketId).emit('dmMessageDelivered', {
               conversationId: msg.conversationId,
@@ -103,20 +111,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   }
 
   // Rate limiting check
-  private checkRateLimit(username: string, ip: string): boolean {
+  private async checkRateLimit(username: string, ip: string): Promise<boolean> {
+    const key = `ratelimit:${username}`;
     const now = Date.now();
-    const userMessages = this.messageRateLimit.get(username) || [];
+    const redis = this.redisService.getClient();
 
-    // Remove old messages outside the window
-    const validMessages = userMessages.filter(time => now - time < this.RATE_LIMIT_WINDOW);
+    // Add current timestamp to sorted set
+    await redis.zAdd(key, { score: now, value: now.toString() });
+    // Remove entries outside the window
+    await redis.zRemRangeByScore(key, 0, now - this.RATE_LIMIT_WINDOW);
+    // Count entries in window
+    const count = await redis.zCard(key);
+    // Auto-expire the key after the window
+    await redis.expire(key, Math.ceil(this.RATE_LIMIT_WINDOW / 1000) + 1);
 
-    if (validMessages.length >= this.RATE_LIMIT_MAX) {
+    if (count > this.RATE_LIMIT_MAX) {
       SecurityLogger.logRateLimitExceeded(username, ip);
       return false; // Rate limit exceeded
     }
-
-    validMessages.push(now);
-    this.messageRateLimit.set(username, validMessages);
     return true;
   }
 
@@ -218,7 +230,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       // Add to active users in memory
-      this.chatService.addUserToRoom(room, {
+      await this.chatService.addUserToRoom(room, {
         name: username, displayName, gender, country, socketId: client.id, isActive: true, avatar: data.avatar, status: 'online',
       });
 
@@ -315,7 +327,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       // 5. CHECK RATE LIMIT
-      if (!this.checkRateLimit(username, ip)) {
+      if (!(await this.checkRateLimit(username, ip))) {
         console.log('[DEBUG] About to emit error with message: - chat.gateway.ts:233', 'Rate limit exceeded. Please slow down.');
         client.emit('error', { message: 'Rate limit exceeded. Please slow down.' });
         console.log('[DEBUG] Error emitted - chat.gateway.ts:235');
@@ -401,7 +413,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // 11. SEND MENTION NOTIFICATIONS
       if (mentions.length > 0) {
         for (const mentionedUser of mentions) {
-          const roomUsers = this.chatService.getUsersInRoom(data.room);
+          const roomUsers = await this.chatService.getUsersInRoom(data.room);
           const mentionedUserData = roomUsers.find(u => u.name === mentionedUser);
 
           // 🔔 1. Real-time socket notification (existing behavior)
@@ -447,7 +459,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const ip = client.handshake.address;
 
       // Check rate limit
-      if (!this.checkRateLimit(username, ip)) {
+      if (!(await this.checkRateLimit(username, ip))) {
         client.emit('error', { message: 'Rate limit exceeded' });
         return;
       }
@@ -832,7 +844,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const ip = client.handshake.address;
 
       // Check rate limit for file uploads
-      if (!this.checkRateLimit(username, ip)) {
+      if (!(await this.checkRateLimit(username, ip))) {
         client.emit('error', { message: 'Rate limit exceeded' });
         return;
       }
@@ -897,14 +909,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   }
 
   @SubscribeMessage('dmTyping')
-  handleDMTyping(
+  async handleDMTyping(
     @MessageBody() data: { conversationId: string; receiverUsername: string; isTyping: boolean },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     const username = client.data.user?.username;
     if (!username) return;
 
-    const receiverSockets = this.chatService.getUserSocketIds(data.receiverUsername);
+    const receiverSockets = await this.chatService.getUserSocketIds(data.receiverUsername);
     for (const socketId of receiverSockets) {
       this.server.to(socketId).emit('dmUserTyping', {
         conversationId: data.conversationId,
@@ -1060,7 +1072,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const dbUser = await this.chatService.getUserWithRole(username);
       if (dbUser?.displayName) displayName = dbUser.displayName;
 
-      this.chatService.addUserToRoom(room.name, {
+      await this.chatService.addUserToRoom(room.name, {
         name: username,
         displayName,
         gender: data.gender,
@@ -1271,14 +1283,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       // Execute Kick
-      const userSocket = this.chatService.getUserSocketId(room, targetUsername);
+      const userSocket = await this.chatService.getUserSocketId(room, targetUsername);
       if (userSocket) {
         this.server.to(userSocket).emit('kicked', { room, by: moderator });
         const socket = this.server.sockets.sockets.get(userSocket);
         if (socket) socket.leave(room);
       }
 
-      this.chatService.removeUserFromRoom(room, targetUsername);
+      await this.chatService.removeUserFromRoom(room, targetUsername);
       this.server.to(room).emit('userKicked', { username: targetUsername, by: moderator });
       this.server.to(room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(room));
 
@@ -1339,14 +1351,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Execute Ban
       await this.chatService.banUserFromRoom(room, username, moderator, data.reason, data.duration);
 
-      const userSocket = this.chatService.getUserSocketId(room, username);
+      const userSocket = await this.chatService.getUserSocketId(room, username);
       if (userSocket) {
         this.server.to(userSocket).emit('banned', { room, by: moderator, reason: data.reason, duration: data.duration });
         const socket = this.server.sockets.sockets.get(userSocket);
         if (socket) socket.leave(room);
       }
 
-      this.chatService.removeUserFromRoom(room, username);
+      await this.chatService.removeUserFromRoom(room, username);
       this.server.to(room).emit('userBanned', { username, by: moderator, reason: data.reason, duration: data.duration });
       this.server.to(room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(room));
 
@@ -1411,7 +1423,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Execute mute
       await this.chatService.muteUser(room, targetUsername);
 
-      const userSocket = this.chatService.getUserSocketId(room, targetUsername);
+      const userSocket = await this.chatService.getUserSocketId(room, targetUsername);
       if (userSocket) {
         this.server.to(userSocket).emit('muted', { room, by: moderator, reason: data.reason });
       }
@@ -1464,7 +1476,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       await this.chatService.unmuteUser(room, targetUsername);
 
-      const userSocket = this.chatService.getUserSocketId(room, targetUsername);
+      const userSocket = await this.chatService.getUserSocketId(room, targetUsername);
       if (userSocket) {
         this.server.to(userSocket).emit('unmuted', { room, by: moderator });
       }
@@ -1714,7 +1726,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const room = InputSanitizer.sanitizeRoomName(data.room);
 
       client.leave(room);
-      this.chatService.removeUserFromRoom(room, username);
+      await this.chatService.removeUserFromRoom(room, username);
 
       this.server.to(room).emit('userEvent', {
         type: 'leave',
@@ -1734,18 +1746,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     // Unregister socket for DM delivery
     const username = client.data.user?.username;
     if (username) {
-      this.chatService.unregisterUserSocket(username, client.id);
+      await this.chatService.unregisterUserSocket(username, client.id);
 
       // If no other tabs/devices are connected for this user, mark as offline
-      if (this.chatService.getUserSocketIds(username).length === 0) {
+      const remainingIds = await this.chatService.getUserSocketIds(username);
+      if (remainingIds.length === 0) {
         await this.chatService.updateUserStatus(username, 'offline');
       }
     }
 
-    const results = this.chatService.getRoomsBySocket(client.id);
+    const results = await this.chatService.getRoomsBySocket(client.id);
 
     for (const { room, user } of results) {
-      this.chatService.removeUserFromRoom(room, user.name);
+      await this.chatService.removeUserFromRoom(room, user.name);
 
       this.server.to(room).emit('userEvent', {
         type: 'leave',
@@ -1871,7 +1884,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const ip = client.handshake.address;
 
       // Rate limit check
-      if (!this.checkRateLimit(username, ip)) {
+      if (!(await this.checkRateLimit(username, ip))) {
         client.emit('error', { message: 'Rate limit exceeded. Please slow down.' });
         return;
       }
@@ -1931,7 +1944,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       client.emit('receiveDMMessage', dmMessage);
 
       // Emit to receiver's active sockets
-      const receiverSockets = this.chatService.getUserSocketIds(data.receiver);
+      const receiverSockets = await this.chatService.getUserSocketIds(data.receiver);
       for (const socketId of receiverSockets) {
         this.server.to(socketId).emit('receiveDMMessage', dmMessage);
         // Also notify receiver of conversation update
@@ -2029,7 +2042,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       if (conversation) {
         const otherUser = conversation.participants.find((p: string) => p !== username);
         if (otherUser) {
-          const senderSockets = this.chatService.getUserSocketIds(otherUser);
+          const senderSockets = await this.chatService.getUserSocketIds(otherUser);
           for (const socketId of senderSockets) {
             this.server.to(socketId).emit('dmMessagesRead', {
               conversationId: data.conversationId,
@@ -2079,7 +2092,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         if (conversation) {
           const otherUser = conversation.participants.find((p: string) => p !== username);
           if (otherUser) {
-            const otherSockets = this.chatService.getUserSocketIds(otherUser);
+            const otherSockets = await this.chatService.getUserSocketIds(otherUser);
             for (const s of otherSockets) {
               this.server.to(s).emit('dmMessagePinned', { conversationId: data.conversationId, messageId: data.messageId });
             }
@@ -2106,7 +2119,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         if (conversation) {
           const otherUser = conversation.participants.find((p: string) => p !== username);
           if (otherUser) {
-            const otherSockets = this.chatService.getUserSocketIds(otherUser);
+            const otherSockets = await this.chatService.getUserSocketIds(otherUser);
             for (const s of otherSockets) {
               this.server.to(s).emit('dmMessageUnpinned', { conversationId: data.conversationId, messageId: data.messageId });
             }
@@ -2154,10 +2167,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         const conversation = await this.chatService.getDMConversationById(data.conversationId);
         if (conversation) {
           const participants = conversation.participants;
-          participants.forEach(p => {
-            const sockets = this.chatService.getUserSocketIds(p);
+          for (const p of participants) {
+            const sockets = await this.chatService.getUserSocketIds(p);
             sockets.forEach(s => this.server.to(s).emit('dmMessageReaction', { messageId: data.messageId, reactions: msg.reactions }));
-          });
+          }
         }
       }
     } catch (e) {
@@ -2178,10 +2191,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       if (success) {
         const conversation = await this.chatService.getDMConversationById(data.conversationId);
         if (conversation) {
-          conversation.participants.forEach(p => {
-            const sockets = this.chatService.getUserSocketIds(p);
+          for (const p of conversation.participants) {
+            const sockets = await this.chatService.getUserSocketIds(p);
             sockets.forEach(s => this.server.to(s).emit('dmMessageDeleted', { messageId: data.messageId }));
-          });
+          }
         }
       }
     } catch (e) {
@@ -2203,10 +2216,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       if (msg) {
         const conversation = await this.chatService.getDMConversationById(data.conversationId);
         if (conversation) {
-          conversation.participants.forEach(p => {
-            const sockets = this.chatService.getUserSocketIds(p);
+          for (const p of conversation.participants) {
+            const sockets = await this.chatService.getUserSocketIds(p);
             sockets.forEach(s => this.server.to(s).emit('dmMessageEdited', { message: msg }));
-          });
+          }
         }
       }
     } catch (e) {
@@ -2231,7 +2244,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       );
 
       client.emit('receiveDMMessage', dmMessage);
-      const receiverSockets = this.chatService.getUserSocketIds(data.receiver);
+      const receiverSockets = await this.chatService.getUserSocketIds(data.receiver);
       for (const s of receiverSockets) {
         this.server.to(s).emit('receiveDMMessage', dmMessage);
       }
@@ -2282,7 +2295,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       );
 
       client.emit('receiveDMMessage', dmMessage);
-      const receiverSockets = this.chatService.getUserSocketIds(data.receiver);
+      const receiverSockets = await this.chatService.getUserSocketIds(data.receiver);
       for (const s of receiverSockets) {
         this.server.to(s).emit('receiveDMMessage', dmMessage);
       }
@@ -2457,7 +2470,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         // Auto-accepted (mutual request)
         client.emit('friendRequestResponse', { status: 'accepted', friend: data.targetUsername });
         // Notify other user
-        const targetSocketIds = this.chatService.getUserSocketIds(data.targetUsername);
+        const targetSocketIds = await this.chatService.getUserSocketIds(data.targetUsername);
         for (const sid of targetSocketIds) {
           this.server.to(sid).emit('friendRequestAccepted', { friend: username });
         }
@@ -2477,7 +2490,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         );
 
         // Notify target about the request
-        const targetSocketIds = this.chatService.getUserSocketIds(data.targetUsername);
+        const targetSocketIds = await this.chatService.getUserSocketIds(data.targetUsername);
         if (targetSocketIds.length > 0) {
           const requests = await this.chatService.getFriendRequests(data.targetUsername);
           for (const sid of targetSocketIds) {
@@ -2518,7 +2531,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
           username
         );
 
-        const senderSocketIds = this.chatService.getUserSocketIds(request.from);
+        const senderSocketIds = await this.chatService.getUserSocketIds(request.from);
         if (senderSocketIds.length > 0) {
           const senderFriends = await this.chatService.getFriends(request.from);
           for (const sid of senderSocketIds) {
@@ -2576,7 +2589,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         client.emit('friendsList', await this.chatService.getFriends(username));
         client.emit('friendRemoved', { friendUsername: data.friendUsername });
         // Notify the other user
-        const otherSocketIds = this.chatService.getUserSocketIds(data.friendUsername);
+        const otherSocketIds = await this.chatService.getUserSocketIds(data.friendUsername);
         if (otherSocketIds.length > 0) {
           const otherFriends = await this.chatService.getFriends(data.friendUsername);
           for (const sid of otherSocketIds) {

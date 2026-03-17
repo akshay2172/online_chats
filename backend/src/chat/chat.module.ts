@@ -14,6 +14,7 @@ import { DMMessage, DMMessageSchema } from '../schemas/dm-message.schema';
 import { FriendRequest, FriendRequestSchema } from '../schemas/friend-request.schema';
 import { NotificationModule } from '../notification/notification.module';
 import { UploadModule } from '../upload/upload.module';
+import { RedisModule } from '../redis/redis.module';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
@@ -31,6 +32,7 @@ import { extname } from 'path';
     ]),
     NotificationModule,
     UploadModule,
+    RedisModule,
     MulterModule.register({
       storage: diskStorage({
         destination: './uploads',

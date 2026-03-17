@@ -1,0 +1,8 @@
+src/chat/chat.gateway.ts(2248,23): error TS2488: Type 'Promise<string[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/chat/chat.gateway.ts(2253,23): error TS2488: Type 'Promise<string[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/chat/chat.gateway.ts(2263,27): error TS2339: Property 'length' does not exist on type 'Promise<string[]>'.
+src/chat/chat.gateway.ts(2299,23): error TS2488: Type 'Promise<string[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/chat/chat.gateway.ts(2304,23): error TS2488: Type 'Promise<string[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/chat/chat.gateway.ts(2314,27): error TS2339: Property 'length' does not exist on type 'Promise<string[]>'.
+src/chat/chat.service.ts(226,47): error TS2345: Argument of type 'string | {}' is not assignable to parameter of type 'string'.
+  Type '{}' is not assignable to type 'string'.
