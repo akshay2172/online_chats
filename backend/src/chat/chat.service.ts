@@ -220,7 +220,7 @@ export class ChatService {
     // Scan for all room:users:* keys
     const keys = await this.redis.keys('room:users:*');
     for (const key of keys) {
-      const json = await this.redis.hGet(key, socketId);
+      const json: string | null = await this.redis.hGet(key, socketId) as string | null;
       if (json) {
         const room = key.replace('room:users:', '');
         results.push({ room, user: JSON.parse(json as string) });

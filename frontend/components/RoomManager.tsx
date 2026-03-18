@@ -188,7 +188,11 @@ export default function RoomManager({
             </button>
           ) : (
             <>
-              <span className="text-xs opacity-70">{room.memberCount || room.members?.length || 0}</span>
+              <span className="text-xs opacity-70">
+                {room.memberCount !== undefined 
+                  ? room.memberCount 
+                  : (room.members?.length || 0)}
+              </span>
               <Users className="w-3 h-3 opacity-70" />
               {canManageRoom(room) && (
                 <button

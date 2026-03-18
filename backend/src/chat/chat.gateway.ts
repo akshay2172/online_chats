@@ -157,6 +157,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // ------------------------------------------------
 
       const ip = client.handshake.address;
+
+      if (!data.room || data.room === 'undefined') {
+        client.emit('error', { message: 'Invalid room ID' });
+        return;
+      }
       const room = InputSanitizer.sanitizeRoomName(data.room);
       const country = InputSanitizer.sanitizeText(data.country, 50);
       const gender = InputSanitizer.sanitizeGender(data.gender);
@@ -178,6 +183,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       let roomDoc = await this.chatService.getRoomByName(room);
+
+      if (!roomDoc && room !== 'general') {
+        client.emit('error', { message: 'Room not found' });
+        return;
+      }
 
       // --- 🔒 3. Block direct join of Private rooms (invite link only) ---
       if (roomDoc && roomDoc.type === 'private') {
@@ -256,12 +266,55 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // ✅ Tell the client exactly what their username resolved to!
       client.emit('roomJoined', { room, username });
 
+      // Emit room info for the client
+      if (roomDoc) {
+        client.emit('roomInfo', {
+          name: roomDoc.name,
+          description: roomDoc.description,
+          type: roomDoc.type,
+        });
+      } else if (room === 'general') {
+        client.emit('roomInfo', {
+          name: 'general',
+          description: 'General public room',
+          type: 'public',
+        });
+      }
+
     } catch (error) {
       SecurityLogger.logError(error, { event: 'joinRoom', user: client.data.user?.username });
       client.emit('error', { message: error.message });
     }
   }
 
+
+  @SubscribeMessage('getRoomInfo')
+  async handleGetRoomInfo(
+    @MessageBody() data: { room: string },
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      if (!data.room || data.room === 'undefined') return;
+      const roomName = InputSanitizer.sanitizeRoomName(data.room);
+      const roomDoc = await this.chatService.getRoomByName(roomName);
+
+      if (roomDoc) {
+        client.emit('roomInfo', {
+          name: roomDoc.name,
+          description: roomDoc.description,
+          type: roomDoc.type,
+        });
+      } else if (roomName === 'general') {
+        client.emit('roomInfo', {
+          name: 'general',
+          description: 'General public room',
+          type: 'public',
+        });
+      }
+    } catch (error) {
+      SecurityLogger.logError(error, { event: 'getRoomInfo', user: client.data.user?.username });
+    }
+  }
 
   @SubscribeMessage('getRooms')
   async handleGetRooms(@ConnectedSocket() client: AuthenticatedSocket) {

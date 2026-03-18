@@ -72,6 +72,7 @@ export default function Room() {
     const [isGuest, setIsGuest] = useState(true);
     const [roomCountInfo, setRoomCountInfo] = useState<{ created: number; limit: number } | undefined>(undefined);
     const [roomBans, setRoomBans] = useState<any[]>([]);
+    const [currentRoomInfo, setCurrentRoomInfo] = useState<{ name?: string; description?: string; type?: string } | null>(null);
 
     const [localQuery, setLocalQuery] = useState<{ username: string; gender: string; country: string; avatar?: string; bio?: string; displayName?: string; status?: string; age?: number } | null>(null);
 
@@ -248,6 +249,12 @@ export default function Room() {
                 query: { ...router.query, username: data.username }
             }, undefined, { shallow: true });
         };
+
+        const onRoomInfo = (data: any) => {
+            setCurrentRoomInfo({ name: data.name, description: data.description, type: data.type });
+        };
+
+        socket.on('roomInfo', onRoomInfo);
 
         const onLoadMessages = (loadedMessages: Message[]) => {
             const currentU = activeUsernameRef.current;
@@ -553,6 +560,7 @@ export default function Room() {
             socket.off('userBlocked');
             socket.off('userUnblocked');
             socket.off('blockedUsersList');
+            socket.off('roomInfo', onRoomInfo);
             clearTimeout(initTimer);
 
 
@@ -901,16 +909,31 @@ export default function Room() {
                     <div className="px-3 sm:px-6 py-3 sm:py-4 z-10 border-b flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border-color)' }}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3 flex-1 overflow-hidden">
-                                <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg relative transition-colors mr-2 group shrink-0" style={{ backgroundColor: 'var(--bg-secondary)' }} aria-label="Open menu">
+                                <button 
+                                    onClick={() => setIsSidebarOpen(true)} 
+                                    className="p-2 rounded-lg relative transition-colors mr-2 group shrink-0" 
+                                    style={{ backgroundColor: 'var(--bg-secondary)' }} 
+                                    aria-label="Open menu"
+                                >
                                     <Menu className="w-6 h-6" style={{ color: 'var(--text-primary)' }} />
                                     {unreadCount > 0 && <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center transform scale-90 translate-x-1 -translate-y-1">{unreadCount}</span>}
                                 </button>
                                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold shrink-0 shadow-sm">
-                                    {typeof id === 'string' ? id.charAt(0).toUpperCase() : 'R'}
+                                    {typeof id === 'string' && id.length > 0 ? id.charAt(0).toUpperCase() : '?'}
                                 </div>
                                 <div className="min-w-0">
-                                    <h2 className="text-lg font-bold truncate capitalize" style={{ color: 'var(--text-primary)' }}>{id}</h2>
-                                    <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{messages.length} messages</span>
+                                    <h2 className="text-lg font-bold truncate capitalize" style={{ color: 'var(--text-primary)' }}>
+                                        {/* FIX: Handle undefined id */}
+                                        {currentRoomInfo?.name || (id && typeof id === 'string' ? id : 'Loading...')}
+                                    </h2>
+                                    <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+                                        {messages.length} messages • {users.length} users
+                                    </span>
+                                    {currentRoomInfo?.description && (
+                                        <p className="text-xs opacity-70 truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                            {currentRoomInfo.description}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
