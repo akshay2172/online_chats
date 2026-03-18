@@ -247,9 +247,11 @@ export class ChatService {
           else if (room.moderators?.includes(u.name)) role = 'moderator';
         }
 
-        // Fetch globalRole, displayName, and avatar from DB
+        // Check if this user is the platform owner (OWNER_ID env var)
+        const isPlatformOwner = this.isOwner(u.name);
+
         const dbUser = await this.userModel.findOne({ username: u.name }).select('globalRole displayName avatar').lean();
-        const globalRole = dbUser?.globalRole || 'user';
+        const globalRole = isPlatformOwner ? 'owner' : (dbUser?.globalRole || 'user');
         const displayName = dbUser?.displayName || u.displayName || u.name;
         const avatar = dbUser?.avatar || null;
 

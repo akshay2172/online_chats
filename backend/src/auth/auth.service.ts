@@ -134,7 +134,7 @@ export class AuthService {
   async verifyRefreshToken(token: string, userId: string): Promise<boolean> {
     try {
       const decoded = jwt.verify(token, this.JWT_REFRESH_SECRET);
-      const user = await this.userModel.findById(userId);
+      const user = await this.userModel.findById(userId).select('+refreshToken');
       return user?.refreshToken === token;
     } catch (error) {
       return false;
@@ -156,7 +156,7 @@ export class AuthService {
       const decoded = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as any;
       const userId = decoded.userId;
 
-      const user = await this.userModel.findById(userId);
+      const user = await this.userModel.findById(userId).select('+refreshToken');
       if (!user || user.refreshToken !== refreshToken) {
         throw new UnauthorizedException('Refresh token revoked or invalid');
       }
