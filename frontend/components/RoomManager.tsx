@@ -56,7 +56,7 @@ interface Props {
   rooms: Room[];
   currentRoom?: string;
   currentUser?: string;
-  userRole?: 'owner' | 'admin' | 'moderator' | 'member';
+  userRole?: 'owner' | 'admin' | 'global_mod' | 'moderator' | 'member';
   onCreateRoom: (roomData: { name: string; description: string; isPrivate: boolean; type: 'public' | 'private' }) => void;
   onJoinRoom: (roomId: string) => void;
   onLeaveRoom: (roomId: string) => void;
@@ -122,6 +122,7 @@ export default function RoomManager({
 
   const canManageRoom = (room: Room) => {
     if (!currentUser) return false;
+    if (userRole === 'admin' || userRole === 'global_mod') return true;
     if (room.owner === currentUser) return true;
     if (room.moderators?.includes(currentUser)) return true;
     return false;

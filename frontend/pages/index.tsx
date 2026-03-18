@@ -114,6 +114,21 @@ export default function Home() {
       addToast('Please fill all fields');
       return;
     }
+    
+    if (username.length < 3) {
+      addToast('Username must be at least 3 characters');
+      return;
+    }
+    
+    if (password.length < 6) {
+      addToast('Password must be at least 6 characters');
+      return;
+    }
+    
+    if (!email.includes('@') || !email.includes('.')) {
+      addToast('Please enter a valid email address');
+      return;
+    }
 
     setIsLoading(true);
     try {

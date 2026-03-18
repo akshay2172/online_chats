@@ -360,11 +360,12 @@ const ChatWindow: React.FC<Props> = ({
   };
 
   const getHierarchyWeight = (role?: string, globalRole?: string) => {
-    if (globalRole === 'owner' || role === 'owner') return 100;
+    if (globalRole === 'owner') return 100;
     if (globalRole === 'admin') return 80;
     if (globalRole === 'global_mod') return 60;
-    if (role === 'moderator') return 40;
-    return 0; // standard user
+    if (role === 'owner') return 40;
+    if (role === 'moderator') return 20;
+    return 0;
   };
 
   const getTargetUser = (targetUsername: string) => {
@@ -376,23 +377,7 @@ const ChatWindow: React.FC<Props> = ({
 
     const target = getTargetUser(targetUser);
     const targetWeight = getHierarchyWeight(target?.role, target?.globalRole);
-
-    // In our context, we rely on currentUserGlobalRole to check admin/global_mod explicitly.
-    // Sometimes owner is not sent back properly as globalRole, but room's currentUserRole helps if they created room.
-    // "Owner" platform role checking should override room role if it exists, but for safety, consider both.
-    let myWeight = getHierarchyWeight(currentUserRole, currentUserGlobalRole);
-    // Explicit platform owner exception (if frontend knows it, otherwise relies on DB)
-    if (currentUserRole === 'owner' || currentUserGlobalRole === 'admin') {
-      // In this app, admins rank '80', global_mods rank '60', etc.
-      if (currentUserGlobalRole === 'admin') myWeight = Math.max(myWeight, 80);
-      if (currentUserGlobalRole === 'global_mod') myWeight = Math.max(myWeight, 60);
-    }
-
-    // Normal room owner is just 100 for that room specifically if they are 'owner' inside role
-    // NOTE: 'owner' role sent for room means Room Owner (except if process.env.OWNER_ID -> not exposed easily here, but we'll assume room owner = 100 for room actions)
-    if (currentUserRole === 'owner') {
-      myWeight = Math.max(myWeight, 40); // Base room owner weight is 40 in backend, but let's give them authority locally 
-    }
+    const myWeight = getHierarchyWeight(currentUserRole, currentUserGlobalRole);
 
     return myWeight > targetWeight && myWeight > 0;
   };
@@ -889,7 +874,7 @@ const ChatWindow: React.FC<Props> = ({
                                   </button>
 
                                   {/* Only show 'Room Ban' if NOT in 'generalchat' */}
-                                  {roomName !== 'generalchat' && (
+                                  {roomName !== 'general chat' && (
                                     <button
                                       onClick={() => {
                                         onBanUser?.(msg.sender);

@@ -623,12 +623,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      const isGlobalMod = await this.chatService.isGlobalModOrAdmin(username);
-      const isRoomOwner = roomDoc.createdBy === username;
-      const isRoomMod = roomDoc.moderators?.includes(username);
       const isSender = message.sender === username;
+      const deleterWeight = await this.chatService.getUserHierarchyWeight(username, data.room);
+      const targetWeight = await this.chatService.getUserHierarchyWeight(message.sender, data.room);
 
-      if (!isSender && !isRoomOwner && !isRoomMod && !isGlobalMod) {
+      if (!isSender && deleterWeight <= targetWeight) {
         client.emit('error', { message: 'You do not have permission to delete this message.' });
         return;
       }
@@ -1272,8 +1271,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // 👑 Owner can delete ANY room regardless of ownership
       const isOwner = this.chatService.isOwner(requestUser);
-      if (!isOwner && room.createdBy !== requestUser) {
-        client.emit('error', { message: 'Only the room owner can delete the room.' });
+      const isAdmin = await this.chatService.isGlobalModOrAdmin(requestUser);
+      if (!isOwner && !isAdmin && room.createdBy !== requestUser) {
+        client.emit('error', { message: 'Only the room owner or platform staff can delete rooms.' });
         return;
       }
 
@@ -1514,16 +1514,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // Resolve roles (same checks as muteUser so only equal/higher rank can unmute)
-      const isActorOwner = this.chatService.isOwner(moderator);
-      const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
-      const isRoomOwner = roomDoc.createdBy === moderator;
-      const isRoomMod = roomDoc.moderators?.includes(moderator);
+      // ⚖️ HIERARCHY ENGINE
+      const actorWeight = await this.chatService.getUserHierarchyWeight(moderator, room);
+      const targetWeight = await this.chatService.getUserHierarchyWeight(targetUsername, room);
 
-      const canUnmute = isActorOwner || isGlobalMod || isRoomOwner || isRoomMod;
-      if (!canUnmute) {
+      if (actorWeight === 0) {
         client.emit('error', { message: 'You do not have permission to unmute users.' });
         SecurityLogger.logSuspiciousActivity(moderator, ip, 'Unauthorized unmute attempt', { room, targetUser: targetUsername });
+        return;
+      }
+      if (actorWeight <= targetWeight) {
+        client.emit('error', { message: 'Hierarchy violation: You cannot unmute someone at or above your level.' });
         return;
       }
 
@@ -1568,7 +1569,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const isActorOwner = this.chatService.isOwner(moderator);
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
       const canUnban = isActorOwner || isGlobalMod ||
-        roomDoc.createdBy === moderator;
+        roomDoc.createdBy === moderator ||
+        roomDoc.moderators?.includes(moderator);
 
       if (!canUnban) {
         client.emit('error', { message: 'You do not have permission to unban users' });

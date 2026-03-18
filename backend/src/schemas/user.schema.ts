@@ -73,7 +73,7 @@ export class User {
   @Prop({ default: false })
   isModerator: boolean; // Kept for your backward compatibility
 
-  @Prop({ default: null })
+  @Prop({ default: null, select: false })
   refreshToken: string;
 }
 

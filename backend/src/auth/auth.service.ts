@@ -33,8 +33,13 @@ export class AuthService {
     const hashedPassword = await this.hashPassword(userData.password);
 
     const user = new this.userModel({
-      ...userData,
+      username: userData.username,
+      email: userData.email,
       password: hashedPassword,
+      displayName: userData.displayName || userData.username,
+      gender: userData.gender,
+      country: userData.country,
+      bio: userData.bio,
       status: 'offline',
     });
 
