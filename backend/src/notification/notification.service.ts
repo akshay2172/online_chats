@@ -192,7 +192,7 @@ export class NotificationService {
         recipientUsername: string,
         promotedBy: string,
         room: string,
-        newRole: 'moderator'  // Room Admin no longer exists in the hierarchy
+        newRole: 'admin' | 'moderator'  // Room Admin no longer exists in the hierarchy
     ): Promise<NotificationDocument> {
         return this.createNotification({
             recipientUsername,

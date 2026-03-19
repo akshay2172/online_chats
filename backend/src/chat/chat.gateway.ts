@@ -319,7 +319,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   @SubscribeMessage('getRooms')
   async handleGetRooms(@ConnectedSocket() client: AuthenticatedSocket) {
     try {
-      const rooms = await this.chatService.getAllRooms();
+      const rooms = await this.chatService.getAllPublicRooms();
       client.emit('roomsList', rooms);
 
       // Also send room count info for the current user
@@ -331,6 +331,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     } catch (error) {
       SecurityLogger.logError(error, { event: 'getRooms', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to get rooms' });
+    }
+  }
+
+  @SubscribeMessage('getRoomById')
+  async handleGetRoomById(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: AuthenticatedSocket) {
+    try {
+      const room = await this.chatService.getRoomById(data.roomId);
+      if (!room) {
+        client.emit('error', { message: 'Room not found' });
+        return;
+      }
+      client.emit('roomInfo', {
+        _id: room._id.toString(),
+        name: room.name,
+        description: room.description,
+        type: room.type,
+      });
+    } catch (err) {
+      client.emit('error', { message: 'Failed to fetch room' });
     }
   }
   @SubscribeMessage('sendMessage')
@@ -809,10 +828,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(username);
+      const isPlatformOwner = this.chatService.isOwner(username);
       const isRoomOwner = roomDoc.createdBy === username;
       const isRoomMod = roomDoc.moderators?.includes(username);
 
-      if (!isRoomOwner && !isRoomMod && !isGlobalMod) {
+      if (!isRoomOwner && !isRoomMod && !isGlobalMod && !isPlatformOwner) {
         client.emit('error', { message: 'You do not have permission to pin messages.' });
         return;
       }
@@ -850,10 +870,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
 
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(username);
+      const isPlatformOwner = this.chatService.isOwner(username);
       const isRoomOwner = roomDoc.createdBy === username;
       const isRoomMod = roomDoc.moderators?.includes(username);
 
-      if (!isRoomOwner && !isRoomMod && !isGlobalMod) {
+      if (!isRoomOwner && !isRoomMod && !isGlobalMod && !isPlatformOwner) {
         client.emit('error', { message: 'You do not have permission to unpin messages.' });
         return;
       }
@@ -1135,12 +1156,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         status: 'online',
       });
 
-      client.emit('joinedRoom', room);
-      this.server.to(room.name).emit('userEvent', {
-        type: 'join',
-        username: username,
+      // send an acknowledgement to the joining client
+      client.emit('joinedRoom', {
+        roomId: room._id.toString(),
+        roomName: room.name,
+        type: room.type,
+        members: await this.chatService.getUsersInRoomWithRoles(room.name),
       });
+
+      // broadcast updateUsers and userJoined to other room members
       this.server.to(room.name).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(room.name));
+      this.server.to(room.name).emit('userJoined', { username, room: room.name });
     } catch (error) {
       SecurityLogger.logError(error, { event: 'joinRoomById', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to join room' });
@@ -1280,7 +1306,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       await this.chatService.deleteRoom(data.roomId);
 
       this.server.to(room.name).emit('roomDeleted', { roomId: data.roomId });
-      this.server.emit('roomListUpdated', await this.chatService.getAllRooms());
+      this.server.emit('roomListUpdated', await this.chatService.getAllPublicRooms());
     } catch (error) {
       SecurityLogger.logError(error, { event: 'deleteRoom', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to delete room' });
@@ -1567,11 +1593,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       // 👑 Owner can unban anyone anywhere
       const isActorOwner = this.chatService.isOwner(moderator);
-      const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
-      const canUnban = isActorOwner || isGlobalMod ||
-        roomDoc.createdBy === moderator ||
-        roomDoc.moderators?.includes(moderator);
+      const isActorGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
 
+      // Get ban metadata (who placed the ban)
+      const activeBans = await this.chatService.getRoomBans(room);
+      const userBan = activeBans.find(b => b.username === username);
+      
+      if (userBan) {
+        const bannedBy = userBan.bannedBy;
+        const bannedByIsOwner = this.chatService.isOwner(bannedBy);
+        const bannedByIsGlobalMod = await this.chatService.isGlobalModOrAdmin(bannedBy);
+      
+        if ((bannedByIsOwner || bannedByIsGlobalMod) && !isActorOwner && !isActorGlobalMod) {
+          client.emit('error', { message: 'You do not have permission to unban a user banned by platform staff.' });
+          return;
+        }
+      }
+      
+      const canUnban = isActorOwner || isActorGlobalMod || roomDoc.createdBy === moderator || roomDoc.moderators?.includes(moderator);
       if (!canUnban) {
         client.emit('error', { message: 'You do not have permission to unban users' });
         return;
@@ -1704,7 +1743,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     @MessageBody() data: {
       room: string;
       username: string;
-      role: 'moderator' | 'member';
+      role: 'admin' | 'moderator' | 'member';
       // Note: We ignore any 'by' field sent by the client for security reasons
     },
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -1723,43 +1762,54 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 Owner can promote/demote anyone in any room without being the room owner
       const isPlatformOwner = this.chatService.isOwner(moderator);
-
-      // Room Owner: Can appoint/remove room moderators
-      // Room Moderator: Cannot remove the owner
-      // Therefore, changing roles is STRICTLY limited to the room owner (or Global Admin / Platform Owner).
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
       const isRoomOwner = room.createdBy === moderator;
 
       if (!isPlatformOwner && !isRoomOwner && !isGlobalMod) {
-        client.emit('error', { message: 'Only the room owner can appoint or remove moderators.' });
-
+        client.emit('error', { message: 'You do not have permission to change user roles.' });
         SecurityLogger.logSuspiciousActivity(moderator, client.handshake.address, 'Unauthorized promote attempt', {
           room: data.room,
           targetUser: data.username,
           targetRole: data.role
         });
-
         return;
       }
 
-      await this.chatService.promoteUser(data.room, data.username, data.role);
+      // If target global role change to 'admin' requested
+      if (data.role === 'admin') {
+        if (!isPlatformOwner) {
+          client.emit('error', { message: 'Only the platform owner can promote users to admin.' });
+          return;
+        }
 
-      if (data.role === 'moderator') {
-        await this.notificationService.createPromotedNotification(
-          data.username,
-          moderator,
-          data.room,
-          data.role
-        );
+        // set globalRole on the user's profile
+        await this.chatService.updateUserProfile(data.username, { globalRole: 'admin' });
+        await this.notificationService.createPromotedNotification(data.username, moderator, data.room, 'admin');
+
+        this.server.emit('userPromoted', { username: data.username, role: 'admin', by: moderator });
+        // broadcast updated active user roles for the room
+        this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
+      } else {
+        // room-level promotion to moderator/member
+        await this.chatService.promoteUser(data.room, data.username, data.role as 'moderator' | 'member');
+
+        if (data.role === 'moderator') {
+          await this.notificationService.createPromotedNotification(
+            data.username,
+            moderator,
+            data.room,
+            data.role
+          );
+        }
+
+        this.server.to(data.room).emit('userPromoted', {
+          username: data.username,
+          role: data.role,
+          by: moderator
+        });
+        this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
       }
-
-      this.server.to(data.room).emit('userPromoted', {
-        username: data.username,
-        role: data.role,
-        by: moderator // Use the server-verified identity, not client payload
-      });
 
     } catch (error) {
       SecurityLogger.logError(error, { event: 'promoteUser', user: client.data.user?.username });

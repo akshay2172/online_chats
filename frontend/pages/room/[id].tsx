@@ -350,6 +350,16 @@ export default function Room() {
             addToast(`You have been platform-banned by ${b}${reason ? ': ' + reason : ''}`);
         });
 
+        socket.on('userMuted', (data: any) => {
+            addToast(`${data.username} was muted by ${data.by}`);
+            socket.emit('getRoomUsers', { room: id });
+        });
+
+        socket.on('userUnmuted', (data: any) => {
+            addToast(`${data.username} was unmuted by ${data.by}`);
+            socket.emit('getRoomUsers', { room: id });
+        });
+
         socket.on('authDowngraded', async (data: any) => {
             console.warn('Auth downgraded:', data.reason);
             const refreshed = await handleAuthExpiry();
@@ -540,6 +550,8 @@ export default function Room() {
             socket.off('userUnbanned');
             socket.off('userBanned');
             socket.off('platformBanned');
+            socket.off('userMuted');
+            socket.off('userUnmuted');
             socket.off('dmConversationsList');
             socket.off('dmConversationStarted');
             socket.off('receiveDMMessage');
@@ -861,6 +873,7 @@ export default function Room() {
                 gender={localQuery?.gender}
                 isGuest={isGuest}
                 currentUserRole={currentUserRole}
+                currentUserGlobalRole={currentUserData?.globalRole}
                 unreadCount={unreadCount}
                 dmConversations={dmConversations}
                 activeDMConversation={activeDMConversation}
@@ -1044,6 +1057,7 @@ export default function Room() {
                         currentUser={activeUsername}
                         currentUserRole={currentUserRole as any}
                         currentUserGlobalRole={currentUserData?.globalRole}
+                        users={users}
                         onDeleteMessage={(messageId) => socket.emit('deleteMessage', { room: id, messageId })}
                         onReportMessage={(msgId) => socket.emit('reportMessage', { room: id, messageId: msgId, reportedBy: activeUsername })}
                         onReplyToMessage={setReplyingTo}
@@ -1053,6 +1067,8 @@ export default function Room() {
                         onKickUser={(u) => socket.emit('kickUser', { room: id, username: u, by: activeUsername })}
                         onBanUser={(u) => socket.emit('banUser', { room: id, username: u, by: activeUsername })}
                         onPlatformBanUser={(u) => socket.emit('platformBan', { username: u })}
+                        onMuteUser={(username) => socket.emit('muteUser', { room: id, username, reason: 'muted from UI' })}
+                        onUnmuteUser={(username) => socket.emit('unmuteUser', { room: id, username })}
                         onPromoteUser={(u, role) => socket.emit('promoteUser', { room: id, username: u, role, by: activeUsername })}
                         pinnedMessages={pinnedMessages}
                         onlineUsers={users.filter(u => u.isActive).map(u => u.name)}

@@ -27,6 +27,8 @@ import {
   Ban,
   UserCheck,
   Crown,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { useDarkMode } from '../pages/_app';
 import LinkPreview from './LinkPreview';
@@ -75,11 +77,13 @@ interface Props {
   onBanUser?: (username: string) => void;
   onPlatformBanUser?: (username: string) => void;
   onBlockUser?: (username: string) => void;
+  onMuteUser?: (username: string) => void;
+  onUnmuteUser?: (username: string) => void;
   onPromoteUser?: (username: string, role: 'admin' | 'moderator' | 'member') => void;
   roomName?: string;
   currentUser?: string;
   currentUserRole?: 'owner' | 'admin' | 'moderator' | 'member';
-  currentUserGlobalRole?: 'admin' | 'global_mod' | 'user';
+  currentUserGlobalRole?: 'owner' | 'admin' | 'global_mod' | 'user';
   replyTo?: Message | null;
   onCancelReply?: () => void;
   onSearch?: (query: string) => void;
@@ -105,6 +109,8 @@ const ChatWindow: React.FC<Props> = ({
   onBanUser,
   onPlatformBanUser,
   onBlockUser,
+  onMuteUser,
+  onUnmuteUser,
   onPromoteUser,
   roomName = '',
   currentUser = 'You',
@@ -384,8 +390,13 @@ const ChatWindow: React.FC<Props> = ({
 
   const canPromote = (targetUser: string) => {
     if (targetUser === currentUser) return false;
-    // Usually only the room owner, global mods, or admins can promote
-    return currentUserRole === 'owner' || currentUserGlobalRole === 'admin' || currentUserGlobalRole === 'global_mod';
+    // Platform owner (globalRole 'owner') or global admins/mods or room owner can promote
+    return (
+      currentUserGlobalRole === 'owner' ||
+      currentUserRole === 'owner' ||
+      currentUserGlobalRole === 'admin' ||
+      currentUserGlobalRole === 'global_mod'
+    );
   };
 
   const renderMessageContent = (msg: Message, isMe: boolean = false) => {
@@ -888,10 +899,9 @@ const ChatWindow: React.FC<Props> = ({
                                   )}
 
                                   {/* Platform Ban -> only for global mods/admins */}
-                                  {(currentUserGlobalRole === 'admin' || currentUserGlobalRole === 'global_mod' || currentUserRole === 'owner') && (
+                                  {(currentUserGlobalRole === 'admin' || currentUserGlobalRole === 'global_mod' || currentUserGlobalRole === 'owner') && (
                                     <button
                                       onClick={() => {
-                                        // Make sure we have passed this prop
                                         if (onPlatformBanUser) {
                                           onPlatformBanUser(msg.sender);
                                         }
@@ -910,7 +920,7 @@ const ChatWindow: React.FC<Props> = ({
                               {!isMe && canPromote(msg.sender) && (
                                 <>
                                   <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
-                                  {getUserRole(msg.sender) !== 'admin' && (
+                                  {getUserRole(msg.sender) !== 'admin' && (currentUserGlobalRole === 'owner' || currentUserGlobalRole === 'admin') && (
                                     <button
                                       onClick={() => {
                                         onPromoteUser?.(msg.sender, 'admin');
@@ -1001,7 +1011,7 @@ const ChatWindow: React.FC<Props> = ({
                               </button>
 
                               {/* Delete */}
-                              {isMe && (
+                              {(isMe || canModerate(msg.sender)) && (
                                 <button
                                   onClick={() => {
                                     onDeleteMessage?.(msgId);
@@ -1012,6 +1022,35 @@ const ChatWindow: React.FC<Props> = ({
                                   <Trash2 className="w-4 h-4" />
                                   Delete
                                 </button>
+                              )}
+
+                              {!isMe && canModerate(msg.sender) && (
+                                <>
+                                  <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
+                                  {/* Mute */}
+                                  <button
+                                    onClick={() => {
+                                      onMuteUser?.(msg.sender);
+                                      setActiveMenu(null);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                  >
+                                    <BellOff className="w-4 h-4" />
+                                    Mute {msg.sender}
+                                  </button>
+
+                                  {/* Unmute */}
+                                  <button
+                                    onClick={() => {
+                                      onUnmuteUser?.(msg.sender);
+                                      setActiveMenu(null);
+                                    }}
+                                    className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
+                                  >
+                                    <Bell className="w-4 h-4" />
+                                    Unmute {msg.sender}
+                                  </button>
+                                </>
                               )}
                             </div>
                           )}

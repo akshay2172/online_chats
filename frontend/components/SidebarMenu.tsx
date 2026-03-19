@@ -27,6 +27,7 @@ interface SidebarMenuProps {
     gender?: string;
     isGuest: boolean;
     currentUserRole: string;
+    currentUserGlobalRole?: string;
     // Notifications
     unreadCount?: number;
     // DM props
@@ -187,7 +188,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                             country: props.country,
                             gender: props.gender,
                             status: props.status,
-                            globalRole: props.currentUserRole
+                            globalRole: props.currentUserGlobalRole || props.currentUserRole
                         }}
                     />
                 );
@@ -246,7 +247,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                         rooms={props.rooms}
                         currentRoom={props.currentRoom}
                         currentUser={props.username}
-                        userRole={props.currentUserRole as any}
+                        userRole={props.currentUserGlobalRole as any} // use global role for admin/global_mod checks
                         isGuest={props.isGuest}
                         roomCountInfo={props.roomCountInfo}
                         roomBans={props.roomBans}

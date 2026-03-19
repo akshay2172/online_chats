@@ -352,7 +352,7 @@ export class ChatService {
   }
 
   async getUserRoomCount(username: string): Promise<{ created: number; limit: number }> {
-    if (this.isOwner(username)) return { created: 0, limit: Infinity };
+    if (this.isOwner(username)) return { created: 0, limit: 999999 };
 
     const user = await this.userModel.findOne({ username });
     if (!user) return { created: 0, limit: 3 };
