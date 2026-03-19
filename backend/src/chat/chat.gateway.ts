@@ -1744,12 +1744,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       room: string;
       username: string;
       role: 'admin' | 'moderator' | 'member';
-      // Note: We ignore any 'by' field sent by the client for security reasons
     },
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      // --- SECURITY FIX 1: Enforce Authenticated User & Prevent Spoofing ---
       const moderator = client.data.user?.username;
       if (!moderator) {
         client.emit('error', { message: 'Authentication required to perform moderation actions.' });
@@ -1762,6 +1760,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
+      // Security checks: actor identity & hierarchy
       const isPlatformOwner = this.chatService.isOwner(moderator);
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
       const isRoomOwner = room.createdBy === moderator;
@@ -1776,44 +1775,119 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // If target global role change to 'admin' requested
+      // Check target existence and ban state
+      const targetUserDoc = await this.chatService.getUserByUsername(data.username);
+      if (!targetUserDoc) {
+        client.emit('error', { message: 'Target user not found' });
+        return;
+      }
+
+      // Platform-ban check (cannot promote someone globally banned)
+      if (targetUserDoc.isPlatformBanned) {
+        client.emit('error', { message: 'Cannot change roles for a platform-banned user.' });
+        return;
+      }
+
+      // Room-ban check — if they're banned from the room, disallow room-level promotions
+      const isRoomBanned = await this.chatService.isUserBanned(data.room, data.username);
+      if (isRoomBanned) {
+        client.emit('error', { message: 'Target user is banned from the room.' });
+        return;
+      }
+
+      // Handle global admin promotion/demotion
       if (data.role === 'admin') {
+        // Only platform owner can grant global admin
         if (!isPlatformOwner) {
           client.emit('error', { message: 'Only the platform owner can promote users to admin.' });
           return;
         }
 
-        // set globalRole on the user's profile
+        // Set globalRole: 'admin'
         await this.chatService.updateUserProfile(data.username, { globalRole: 'admin' });
-        await this.notificationService.createPromotedNotification(data.username, moderator, data.room, 'admin');
 
-        this.server.emit('userPromoted', { username: data.username, role: 'admin', by: moderator });
-        // broadcast updated active user roles for the room
+        await this.notificationService.createPromotedNotification(
+          data.username,
+          moderator,
+          data.room,
+          'admin'
+        );
+
+        this.server.emit('userPromoted', {
+          username: data.username,
+          role: 'admin',
+          by: moderator,
+        });
+
+        // Broadcast updated users/roles for the room so clients refresh
         this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
-      } else {
-        // room-level promotion to moderator/member
-        await this.chatService.promoteUser(data.room, data.username, data.role as 'moderator' | 'member');
+        return;
+      }
 
-        if (data.role === 'moderator') {
-          await this.notificationService.createPromotedNotification(
-            data.username,
-            moderator,
-            data.room,
-            data.role
-          );
+      // If data.role === 'member' and target is global admin -> treat as demote from admin (only owner allowed)
+      if (data.role === 'member' && targetUserDoc.globalRole === 'admin') {
+        if (!isPlatformOwner) {
+          client.emit('error', { message: 'Only the platform owner can remove global admin status.' });
+          return;
         }
+
+        await this.chatService.updateUserProfile(data.username, { globalRole: 'user' });
+
+        await this.notificationService.createPromotedNotification(
+          data.username,
+          moderator,
+          data.room,
+          'admin_removed'
+        );
+
+        this.server.emit('userPromoted', {
+          username: data.username,
+          role: 'admin_removed',
+          by: moderator,
+        });
+
+        this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
+        return;
+      }
+
+      // Room-level promotions/demotions: moderator/member
+      if (data.role === 'moderator') {
+        await this.chatService.promoteUser(data.room, data.username, 'moderator');
+
+        await this.notificationService.createPromotedNotification(
+          data.username,
+          moderator,
+          data.room,
+          'moderator'
+        );
 
         this.server.to(data.room).emit('userPromoted', {
           username: data.username,
-          role: data.role,
+          role: 'moderator',
           by: moderator
         });
+
         this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
+        return;
+      }
+
+      if (data.role === 'member') {
+        // handle removal of moderator role in room (if exists)
+        await this.chatService.promoteUser(data.room, data.username, 'member');
+
+        this.server.to(data.room).emit('userPromoted', {
+          username: data.username,
+          role: 'member',
+          by: moderator
+        });
+
+        this.server.to(data.room).emit('updateUsers', await this.chatService.getUsersInRoomWithRoles(data.room));
+        return;
       }
 
     } catch (error) {
       SecurityLogger.logError(error, { event: 'promoteUser', user: client.data.user?.username });
-      client.emit('error', { message: 'Failed to promote user' });
+      client.emit('error', { message: 'Failed to change user role' });
     }
   }
 

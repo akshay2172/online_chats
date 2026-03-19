@@ -192,13 +192,24 @@ export class NotificationService {
         recipientUsername: string,
         promotedBy: string,
         room: string,
-        newRole: 'admin' | 'moderator'  // Room Admin no longer exists in the hierarchy
+        newRole: 'admin' | 'moderator' | 'member' | 'admin_removed'
     ): Promise<NotificationDocument> {
+        let title = 'You were promoted';
+        let message = `You were promoted to ${newRole} in ${room} by ${promotedBy}`;
+        
+        if (newRole === 'admin_removed') {
+            title = 'Admin Status Removed';
+            message = `Your global admin status was removed by ${promotedBy}`;
+        } else if (newRole === 'member') {
+            title = 'Role Changed';
+            message = `Your role in ${room} was changed to member by ${promotedBy}`;
+        }
+
         return this.createNotification({
             recipientUsername,
             type: 'promoted',
-            title: 'You were promoted',
-            message: `You were promoted to ${newRole} in ${room} by ${promotedBy}`,
+            title,
+            message,
             data: { room, promotedBy, newRole },
             actionUrl: `/room/${room}`,
             expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

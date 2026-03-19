@@ -930,17 +930,34 @@ const ChatWindow: React.FC<Props> = ({
                               )}
 
                               {/* Promotion Actions */}
-                              {!isMe && canPromote(msg.sender) && (() => {
+                              {!isMe && (() => {
                                 const target = getTargetUser(msg.sender);
                                 const targetWeight = getHierarchyWeight(target?.role, target?.globalRole);
                                 const myWeight = getHierarchyWeight(currentUserRole, currentUserGlobalRole);
+
+                                // Only show promotion menu if actor strictly higher than target
+                                if (myWeight <= targetWeight) return null;
 
                                 return (
                                   <>
                                     <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
 
-                                    {/* Promote to Admin: only visible to platform owner and only if owner is higher than target */}
-                                    {getUserRole(msg.sender) !== 'admin' && currentUserGlobalRole === 'owner' && myWeight > targetWeight && (
+                                    {/* Remove Admin (platform owner only) */}
+                                    {target?.globalRole === 'admin' && currentUserGlobalRole === 'owner' && (
+                                      <button
+                                        onClick={() => {
+                                          onPromoteUser?.(msg.sender, 'member'); // backend treats this as demote admin if target.globalRole === 'admin'
+                                          setActiveMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                      >
+                                        <Shield className="w-4 h-4" />
+                                        Remove Admin
+                                      </button>
+                                    )}
+
+                                    {/* Promote to Admin (platform owner only) */}
+                                    {target?.globalRole !== 'admin' && currentUserGlobalRole === 'owner' && (
                                       <button
                                         onClick={() => {
                                           onPromoteUser?.(msg.sender, 'admin');
@@ -953,8 +970,8 @@ const ChatWindow: React.FC<Props> = ({
                                       </button>
                                     )}
 
-                                    {/* Promote to Mod: room-level promotion — require higher hierarchy and target not already mod/admin */}
-                                    {getUserRole(msg.sender) !== 'moderator' && getUserRole(msg.sender) !== 'admin' && myWeight > targetWeight && (
+                                    {/* Room-level Promote to Mod */}
+                                    {target?.role !== 'moderator' && target?.role !== 'owner' && (
                                       <button
                                         onClick={() => {
                                           onPromoteUser?.(msg.sender, 'moderator');
@@ -967,8 +984,8 @@ const ChatWindow: React.FC<Props> = ({
                                       </button>
                                     )}
 
-                                    {/* Remove Mod Status: only if they are a mod/admin and you are higher */}
-                                    {(getUserRole(msg.sender) === 'moderator' || getUserRole(msg.sender) === 'admin') && myWeight > targetWeight && (
+                                    {/* Remove Mod status */}
+                                    {(target?.role === 'moderator') && (
                                       <button
                                         onClick={() => {
                                           onPromoteUser?.(msg.sender, 'member');

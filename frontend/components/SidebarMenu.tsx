@@ -211,7 +211,8 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                             gender: siteUser.gender,
                             country: siteUser.country,
                             status: siteUser.status,
-                            globalRole: siteUser.role || siteUser.globalRole
+                            globalRole: siteUser.globalRole,
+                            role: siteUser.role // room-specific role if available
                         } : undefined}
                     />
                 );

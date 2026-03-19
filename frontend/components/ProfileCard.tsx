@@ -33,7 +33,8 @@ interface ProfileData {
     gender?: string;
     status: string;
     lastSeen?: string;
-    globalRole: string;
+    globalRole?: string; // note optional
+    role?: string; // room role (e.g., 'moderator' | 'owner' | 'member')
     createdAt: string;
     isFriend?: boolean;
     isBlocked?: boolean;
@@ -545,7 +546,10 @@ export default function ProfileCard({
                     <div className="space-y-0.5">
                         <InfoRow icon={<User className="w-4 h-4" />} label="Username" value={`@${displayProfile.username}`} />
                         <InfoRow icon={<UserCheck className="w-4 h-4" />} label="Display Name" value={displayProfile.displayName} />
-                        <InfoRow icon={<Shield className="w-4 h-4" />} label="Role" value={badge.label} />
+                        {/* Show both global role and room role (if present) */}
+                        <InfoRow icon={<Shield className="w-4 h-4" />} label="Role" value={
+                          displayProfile.role ? `${displayProfile.role}${displayProfile.globalRole ? ` • ${displayProfile.globalRole}` : ''}` : (displayProfile.globalRole || 'user')
+                        } />
                         <InfoRow icon={<Cake className="w-4 h-4" />} label="Age" value={displayProfile.age ? `${displayProfile.age} years` : 'Not set'} />
                         <InfoRow icon={<Globe className="w-4 h-4" />} label="Gender" value={gDisplay} />
                         <InfoRow icon={<MapPin className="w-4 h-4" />} label="Country" value={displayProfile.country || 'Not set'} />

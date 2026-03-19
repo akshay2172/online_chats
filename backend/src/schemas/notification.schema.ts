@@ -54,7 +54,7 @@ export class Notification {
     reason?: string;
 
     // For promotions
-    newRole?: 'moderator';
+    newRole?: 'admin' | 'moderator' | 'member' | 'admin_removed';
     promotedBy?: string;
 
     // For mutes
