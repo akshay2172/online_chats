@@ -390,13 +390,26 @@ const ChatWindow: React.FC<Props> = ({
 
   const canPromote = (targetUser: string) => {
     if (targetUser === currentUser) return false;
-    // Platform owner (globalRole 'owner') or global admins/mods or room owner can promote
-    return (
-      currentUserGlobalRole === 'owner' ||
-      currentUserRole === 'owner' ||
-      currentUserGlobalRole === 'admin' ||
-      currentUserGlobalRole === 'global_mod'
-    );
+
+    const target = getTargetUser(targetUser);
+    const targetWeight = getHierarchyWeight(target?.role, target?.globalRole);
+    const myWeight = getHierarchyWeight(currentUserRole, currentUserGlobalRole);
+
+    // You must be strictly higher in the hierarchy to promote someone
+    if (myWeight <= targetWeight) return false;
+
+    // Platform owner can promote anyone (and only owner can grant global 'admin')
+    if (currentUserGlobalRole === 'owner') return true;
+
+    // Global admin / global_mod can perform room-level promotions (moderator/member)
+    if (currentUserGlobalRole === 'admin' || currentUserGlobalRole === 'global_mod') {
+      return true;
+    }
+
+    // Room owner (room-level owner role stored in currentUserRole) can promote within the room
+    if (currentUserRole === 'owner') return true;
+
+    return false;
   };
 
   const renderMessageContent = (msg: Message, isMe: boolean = false) => {
@@ -917,47 +930,59 @@ const ChatWindow: React.FC<Props> = ({
                               )}
 
                               {/* Promotion Actions */}
-                              {!isMe && canPromote(msg.sender) && (
-                                <>
-                                  <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
-                                  {getUserRole(msg.sender) !== 'admin' && (currentUserGlobalRole === 'owner' || currentUserGlobalRole === 'admin') && (
-                                    <button
-                                      onClick={() => {
-                                        onPromoteUser?.(msg.sender, 'admin');
-                                        setActiveMenu(null);
-                                      }}
-                                      className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
-                                    >
-                                      <Shield className="w-4 h-4" />
-                                      Promote to Admin
-                                    </button>
-                                  )}
-                                  {getUserRole(msg.sender) !== 'moderator' && getUserRole(msg.sender) !== 'admin' && (
-                                    <button
-                                      onClick={() => {
-                                        onPromoteUser?.(msg.sender, 'moderator');
-                                        setActiveMenu(null);
-                                      }}
-                                      className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                    >
-                                      <UserCheck className="w-4 h-4" />
-                                      Promote to Mod
-                                    </button>
-                                  )}
-                                  {(getUserRole(msg.sender) === 'moderator' || getUserRole(msg.sender) === 'admin') && (
-                                    <button
-                                      onClick={() => {
-                                        onPromoteUser?.(msg.sender, 'member');
-                                        setActiveMenu(null);
-                                      }}
-                                      className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/20"
-                                    >
-                                      <UserX className="w-4 h-4" />
-                                      Remove Mod Status
-                                    </button>
-                                  )}
-                                </>
-                              )}
+                              {!isMe && canPromote(msg.sender) && (() => {
+                                const target = getTargetUser(msg.sender);
+                                const targetWeight = getHierarchyWeight(target?.role, target?.globalRole);
+                                const myWeight = getHierarchyWeight(currentUserRole, currentUserGlobalRole);
+
+                                return (
+                                  <>
+                                    <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
+
+                                    {/* Promote to Admin: only visible to platform owner and only if owner is higher than target */}
+                                    {getUserRole(msg.sender) !== 'admin' && currentUserGlobalRole === 'owner' && myWeight > targetWeight && (
+                                      <button
+                                        onClick={() => {
+                                          onPromoteUser?.(msg.sender, 'admin');
+                                          setActiveMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                                      >
+                                        <Shield className="w-4 h-4" />
+                                        Promote to Admin
+                                      </button>
+                                    )}
+
+                                    {/* Promote to Mod: room-level promotion — require higher hierarchy and target not already mod/admin */}
+                                    {getUserRole(msg.sender) !== 'moderator' && getUserRole(msg.sender) !== 'admin' && myWeight > targetWeight && (
+                                      <button
+                                        onClick={() => {
+                                          onPromoteUser?.(msg.sender, 'moderator');
+                                          setActiveMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                      >
+                                        <UserCheck className="w-4 h-4" />
+                                        Promote to Mod
+                                      </button>
+                                    )}
+
+                                    {/* Remove Mod Status: only if they are a mod/admin and you are higher */}
+                                    {(getUserRole(msg.sender) === 'moderator' || getUserRole(msg.sender) === 'admin') && myWeight > targetWeight && (
+                                      <button
+                                        onClick={() => {
+                                          onPromoteUser?.(msg.sender, 'member');
+                                          setActiveMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-sm flex items-center gap-2 theme-menu-item text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/20"
+                                      >
+                                        <UserX className="w-4 h-4" />
+                                        Remove Mod Status
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
 
                               {/* Edit (own messages only) */}
                               {isMe && msg.messageType === 'text' && (
