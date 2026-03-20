@@ -5,6 +5,8 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
+import { EmailService } from './email.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +19,13 @@ export class AuthService {
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly emailService: EmailService,
+    private readonly redisService: RedisService,
   ) { }
+
+  private get redis() {
+    return this.redisService.getClient();
+  }
 
   async signup(userData: any) {
     const existingUsername = await this.userModel.findOne({ username: userData.username });
@@ -45,7 +53,13 @@ export class AuthService {
 
     await user.save();
 
-    return { message: 'User created successfully' };
+    // Send first OTP automatically
+    await this.generateAndSendOtp(user._id.toString());
+
+    return { 
+      message: 'User created successfully. Please verify your email.',
+      userId: user._id.toString()
+    };
   }
 
   async login(email: string, password: string) {
@@ -80,6 +94,7 @@ export class AuthService {
       gender: user.gender || 'other',
       country: user.country || 'Unknown',
       isOwner, // UI-only hint; all real privilege checks are server-side
+      isVerified: user.isVerified || false,
     };
   }
 
@@ -173,6 +188,7 @@ export class AuthService {
         username: user.username,
         email: user.email,
         isOwner,
+        isVerified: user.isVerified || false,
       };
     } catch (error) {
       console.error('❌ refreshAccessToken error:', error.message);
@@ -186,5 +202,111 @@ export class AuthService {
   // Logout - revoke refresh token
   async logout(userId: string): Promise<void> {
     await this.revokeRefreshToken(userId);
+  }
+
+  // --- 📧 EMAIL VERIFICATION (OTP) ---
+  
+  async generateAndSendOtp(userId: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isVerified) {
+      throw new BadRequestException('User is already verified');
+    }
+
+    // Rate limit OTP generation (max 5 per hour roughly)
+    const attemptsKey = `otp_attempts:${userId}`;
+    const attemptsStr = await this.redis.get(attemptsKey);
+    const attempts = attemptsStr ? parseInt(attemptsStr as string, 10) : 0;
+    
+    if (attempts >= 5) {
+      throw new BadRequestException('Too many OTP requests. Please try again later.');
+    }
+
+    // Generate 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Store OTP with 10 minute expiration
+    const otpKey = `otp:${userId}`;
+    await this.redis.set(otpKey, otp, { EX: 600 });
+    
+    // Store cooldown (1 minute)
+    const cooldownKey = `otp_cooldown:${userId}`;
+    await this.redis.set(cooldownKey, '1', { EX: 60 });
+
+    // Increment attempt counter (1 hour TTL)
+    if (attempts === 0) {
+      await this.redis.set(attemptsKey, '1', { EX: 3600 });
+    } else {
+      await this.redis.incr(attemptsKey);
+    }
+
+    // Send email
+    const success = await this.emailService.sendOtpEmail(user.email, otp);
+    if (!success) {
+      throw new BadRequestException('Failed to send email. Please try again later.');
+    }
+
+    return { message: 'Verification code sent to your email.' };
+  }
+
+  async verifyOtp(userId: string, otp: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isVerified) throw new BadRequestException('User is already verified');
+
+    const otpKey = `otp:${userId}`;
+    const storedOtp = await this.redis.get(otpKey);
+
+    if (!storedOtp) {
+      throw new BadRequestException('OTP expired or not requested.');
+    }
+
+    const verifyAttemptsKey = `otp_verify_attempts:${userId}`;
+    const verifyAttemptsStr = await this.redis.get(verifyAttemptsKey);
+    const verifyAttempts = verifyAttemptsStr ? parseInt(verifyAttemptsStr as string, 10) : 0;
+
+    if (verifyAttempts >= 5) {
+      await this.redis.del(otpKey);
+      await this.redis.del(verifyAttemptsKey);
+      throw new BadRequestException('Too many failed attempts. Please request a new code.');
+    }
+
+    if (storedOtp !== otp) {
+      if (verifyAttempts === 0) {
+        await this.redis.set(verifyAttemptsKey, '1', { EX: 600 });
+      } else {
+        await this.redis.incr(verifyAttemptsKey);
+      }
+      throw new BadRequestException('Invalid OTP.');
+    }
+
+    // Match success!
+    user.isVerified = true;
+    await user.save();
+
+    // Clean up
+    await this.redis.del(otpKey);
+    await this.redis.del(verifyAttemptsKey);
+    await this.redis.del(`otp_attempts:${userId}`);
+    await this.redis.del(`otp_cooldown:${userId}`);
+
+    return { message: 'Email verified successfully.' };
+  }
+
+  async resendOtp(userId: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isVerified) throw new BadRequestException('User is already verified');
+
+    const cooldownKey = `otp_cooldown:${userId}`;
+    const ttl = await this.redis.ttl(cooldownKey);
+    if (ttl > 0) {
+      throw new BadRequestException(`Please wait ${ttl} seconds before requesting another code.`);
+    }
+
+    return await this.generateAndSendOtp(userId);
   }
 }

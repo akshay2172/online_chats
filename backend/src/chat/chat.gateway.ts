@@ -1782,6 +1782,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
+      // Email verified check
+      if (!targetUserDoc.isVerified) {
+        client.emit('error', { message: 'Only users with verified emails can be promoted to moderator or admin.' });
+        return;
+      }
+
       // Platform-ban check (cannot promote someone globally banned)
       if (targetUserDoc.isPlatformBanned) {
         client.emit('error', { message: 'Cannot change roles for a platform-banned user.' });

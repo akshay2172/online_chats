@@ -29,7 +29,7 @@ const countries = [
 ];
 
 export default function Home() {
-  const [view, setView] = useState<'choice' | 'guest' | 'login' | 'signup'>('choice');
+  const [view, setView] = useState<'choice' | 'guest' | 'login' | 'signup' | 'otp'>('choice');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,6 +39,11 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+
+  // OTP State
+  const [otpCode, setOtpCode] = useState('');
+  const [otpUserId, setOtpUserId] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
   const router = useRouter();
 
   const addToast = (text: string) => {
@@ -46,6 +51,15 @@ export default function Home() {
     setToasts(prev => [...prev, { id, text }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   };
+
+  // Handle OTP Cooldown Timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpCooldown > 0) {
+      timer = setInterval(() => setOtpCooldown(c => c - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -83,6 +97,7 @@ export default function Home() {
         if (data.avatar) localStorage.setItem('avatar', data.avatar);
         if (data.bio) localStorage.setItem('bio', data.bio);
         if (data.displayName) localStorage.setItem('displayName', data.displayName);
+        if (data.isVerified !== undefined) localStorage.setItem('isVerified', String(data.isVerified));
 
         setUsername(data.username);
         setGender(genderVal);
@@ -148,8 +163,9 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        addToast('Account created! Please login.');
-        setView('login');
+        addToast('Account created! Please check your email for the verification code.');
+        setOtpUserId(data.userId); 
+        setView('otp');
         setPassword(''); // Clear password
       } else {
         const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
@@ -157,6 +173,66 @@ export default function Home() {
       }
     } catch (error) {
       addToast('Signup error. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode || otpCode.length !== 6) {
+      addToast('Please enter a valid 6-digit code');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: otpUserId, otp: otpCode }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        addToast('Email verified successfully! Please login.');
+        setView('login');
+      } else {
+        const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+        addToast('Verification failed: ' + (errorMessage || 'Invalid code'));
+      }
+    } catch (error) {
+      addToast('Error verifying code. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (otpCooldown > 0) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: otpUserId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        addToast('A new code has been sent to your email.');
+        setOtpCooldown(60);
+      } else {
+        const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+        addToast('Failed to resend: ' + (errorMessage || 'Please try again later.'));
+        if (errorMessage && errorMessage.includes('wait')) {
+          setOtpCooldown(60);
+        }
+      }
+    } catch (error) {
+      addToast('Error resending code. Please check your connection.');
     } finally {
       setIsLoading(false);
     }
@@ -419,6 +495,57 @@ export default function Home() {
                 className="w-full py-2 text-gray-400 hover:text-white transition-colors"
               >
                 ← Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // OTP Screen
+  if (view === 'otp') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900">
+        <div className="relative max-w-md w-full px-4">
+          <div className="absolute -inset-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl blur-xl opacity-30"></div>
+
+          <div className="relative bg-gray-900 bg-opacity-90 backdrop-blur-sm p-10 rounded-2xl shadow-2xl border border-gray-800">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-white">Verify Your Email</h2>
+              <p className="text-gray-400 text-sm mt-2">We sent a 6-digit code to your email.</p>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Enter 6-digit code"
+                className="w-full p-4 text-center text-2xl tracking-widest rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-purple-500"
+                value={otpCode}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                maxLength={6}
+              />
+              <button
+                onClick={handleVerifyOtp}
+                disabled={isLoading || otpCode.length !== 6}
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {isLoading ? 'Verifying...' : 'Verify Email'}
+              </button>
+              
+              <button
+                onClick={handleResendOtp}
+                disabled={isLoading || otpCooldown > 0}
+                className="w-full py-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {otpCooldown > 0 ? `Resend in ${otpCooldown}s` : 'Resend Code'}
+              </button>
+
+              <button
+                onClick={() => setView('choice')}
+                className="w-full py-2 text-gray-500 text-sm hover:text-white transition-colors"
+              >
+                ← Back to Home
               </button>
             </div>
           </div>

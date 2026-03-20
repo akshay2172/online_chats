@@ -26,4 +26,21 @@ export class AuthController {
     await this.authService.logout(body.userId);
     return { message: 'Logged out successfully' };
   }
+
+  // --- 📧 EMAIL OTP ENDPOINTS ---
+  
+  @Post('send-otp')
+  async sendOtp(@Body() body: { userId: string }) {
+    return await this.authService.generateAndSendOtp(body.userId);
+  }
+
+  @Post('verify-otp')
+  async verifyOtp(@Body() body: { userId: string; otp: string }) {
+    return await this.authService.verifyOtp(body.userId, body.otp);
+  }
+
+  @Post('resend-otp')
+  async resendOtp(@Body() body: { userId: string }) {
+    return await this.authService.resendOtp(body.userId);
+  }
 }
