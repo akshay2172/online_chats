@@ -25,6 +25,17 @@ socket.io.on('reconnect_attempt', () => {
 export const connectSocket = () => {
   console.log('🔗 Connecting socket...');
   const token = localStorage.getItem('accessToken');
+
+  // If socket is already connected but token has changed, force reconnect  
+  if (socket.connected) {  
+    const currentAuth = socket.auth as any;  
+    const currentToken = currentAuth?.token;  
+    if (currentToken !== token) {  
+      console.log('Token changed, forcing reconnect...');  
+      socket.disconnect();  
+    }  
+  }  
+
   if (token) {
     socket.auth = { token };
     startTokenRefreshInterval(); // Start proactive refresh

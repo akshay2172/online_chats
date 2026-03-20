@@ -48,6 +48,15 @@ export class ChatService {
 
   // User Management
   async addUserToRoom(room: string, user: RoomUser) {
+    // Remove any stale entries for this username (from previous sessions)  
+    const existingUsers = await this.getUsersInRoom(room);  
+    for (const existing of existingUsers) {  
+      if (existing.name === user.name && existing.socketId !== user.socketId) {  
+        await this.redis.hDel(`room:users:${room}`, existing.socketId);  
+        console.log(`Cleaned up stale entry for ${user.name} (old socketId: ${existing.socketId})`);  
+      }  
+    }  
+
     // Store user data as JSON in a Redis hash, keyed by socketId
     await this.redis.hSet(
       `room:users:${room}`,

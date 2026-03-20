@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { LogIn, UserPlus, Users, Terminal } from 'lucide-react';
+import { disconnectSocket } from '../utils/socket';
 
 const countries = [
   { name: 'United States', code: 'US', flag: '🇺🇸' },
@@ -76,6 +77,8 @@ export default function Home() {
   }, []);
 
   const handleLogin = async () => {
+    // Disconnect any existing socket connection from a previous account  
+    disconnectSocket();
     setIsLoading(true);
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
@@ -255,6 +258,9 @@ export default function Home() {
   };
 
   const handleGuestLogin = () => {
+    // Disconnect any existing socket connection from a previous account  
+    disconnectSocket();
+
     // Clear any previous registered user session data so guest doesn't inherit identity
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');

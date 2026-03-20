@@ -233,6 +233,7 @@ export default function Room() {
             socket.off('disconnect', onDisconnect);
             socket.off('connect_error', onConnectError);
             socket.io.off('reconnect', onReconnect);
+            socket.disconnect();
         };
     }, [id, localQuery]);
 
