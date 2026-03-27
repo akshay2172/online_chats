@@ -235,7 +235,7 @@ export default function Room() {
             socket.io.off('reconnect', onReconnect);
             socket.disconnect();
         };
-    }, [id, localQuery]);
+    }, [id]);
 
     // Set up message and user event listeners
     useEffect(() => {

@@ -239,6 +239,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         if (dbUser?.displayName) displayName = dbUser.displayName;
       }
 
+      // Before adding user to room, prune stale entries for ANY user whose socket is no longer connected  
+      const existingUsers = await this.chatService.getUsersInRoom(room);  
+      for (const existing of existingUsers) {  
+          if (!this.server.sockets.sockets.has(existing.socketId)) {  
+              await this.chatService.removeStaleSocketEntry(room, existing.socketId);  
+          }  
+      }
+
       // Add to active users in memory
       await this.chatService.addUserToRoom(room, {
         name: username, displayName, gender, country, socketId: client.id, isActive: true, avatar: data.avatar, status: 'online',

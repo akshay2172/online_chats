@@ -66,6 +66,11 @@ export class ChatService {
     console.log(`✅ User ${user.name} (${user.socketId}) added to ${room}`);
   }
 
+  async removeStaleSocketEntry(room: string, socketId: string) {  
+    await this.redis.hDel(`room:users:${room}`, socketId);  
+    console.log(`Pruned stale socket entry: ${socketId} from ${room}`);  
+  }
+
   async getUsersInRoom(room: string): Promise<RoomUser[]> {
     const data = await this.redis.hGetAll(`room:users:${room}`);
     return Object.values(data).map((json) => JSON.parse(json));
