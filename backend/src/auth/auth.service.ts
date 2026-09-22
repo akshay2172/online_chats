@@ -10,8 +10,8 @@ import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class AuthService {
-  private readonly JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
-  private readonly JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret';
+  private readonly JWT_SECRET: string;
+  private readonly JWT_REFRESH_SECRET: string;
   private readonly ACCESS_TOKEN_EXPIRY = '15m';
   private readonly REFRESH_TOKEN_EXPIRY = '7d';
 
@@ -21,7 +21,20 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private readonly emailService: EmailService,
     private readonly redisService: RedisService,
-  ) { }
+  ) {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET environment variable is required');
+    }
+
+    const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!jwtRefreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET environment variable is required');
+    }
+
+    this.JWT_SECRET = jwtSecret;
+    this.JWT_REFRESH_SECRET = jwtRefreshSecret;
+  }
 
   private get redis() {
     return this.redisService.getClient();
@@ -53,11 +66,8 @@ export class AuthService {
 
     await user.save();
 
-    // Send first OTP automatically
-    await this.generateAndSendOtp(user._id.toString());
-
     return { 
-      message: 'User created successfully. Please verify your email.',
+      message: 'User created successfully.',
       userId: user._id.toString()
     };
   }
@@ -84,6 +94,7 @@ export class AuthService {
     const refreshToken = await this.generateRefreshToken(user._id.toString());
 
     return {
+      userId: user._id.toString(),
       accessToken,
       refreshToken,
       username: user.username,
@@ -132,8 +143,10 @@ export class AuthService {
       { expiresIn: this.REFRESH_TOKEN_EXPIRY }
     );
 
-    // ✅ Store refresh token in Database instead of memory
-    await this.userModel.findByIdAndUpdate(userId, { refreshToken });
+    const hashedToken = await bcrypt.hash(refreshToken, 12);
+    await this.userModel.findByIdAndUpdate(userId, {
+      refreshToken: hashedToken,
+    });
 
     return refreshToken;
   }
@@ -150,7 +163,9 @@ export class AuthService {
     try {
       const decoded = jwt.verify(token, this.JWT_REFRESH_SECRET);
       const user = await this.userModel.findById(userId).select('+refreshToken');
-      return user?.refreshToken === token;
+      return user?.refreshToken
+        ? await bcrypt.compare(token, user.refreshToken)
+        : false;
     } catch (error) {
       return false;
     }
@@ -164,7 +179,7 @@ export class AuthService {
   async refreshAccessToken(refreshToken: string) {
     try {
       if (!refreshToken) {
-        console.warn('⚠️ Refresh attempt with no token');
+        console.warn('⚠️ Refresh attempt with no token - auth.service.ts:182');
         throw new UnauthorizedException('No refresh token provided');
       }
 
@@ -172,7 +187,11 @@ export class AuthService {
       const userId = decoded.userId;
 
       const user = await this.userModel.findById(userId).select('+refreshToken');
-      if (!user || user.refreshToken !== refreshToken) {
+      if (
+        !user ||
+        !user.refreshToken ||
+        !(await bcrypt.compare(refreshToken, user.refreshToken))
+      ) {
         throw new UnauthorizedException('Refresh token revoked or invalid');
       }
 
@@ -181,7 +200,7 @@ export class AuthService {
 
       // Generate new access token
       const newAccessToken = this.generateAccessToken(userId, user.username, isOwner);
-      console.log(`✅ Token refreshed successfully for ${user.username}`);
+      console.log(`✅ Token refreshed successfully for ${user.username} - auth.service.ts:203`);
 
       return {
         accessToken: newAccessToken,
@@ -191,17 +210,47 @@ export class AuthService {
         isVerified: user.isVerified || false,
       };
     } catch (error) {
-      console.error('❌ refreshAccessToken error:', error.message);
+      console.error(
+        '❌ refreshAccessToken error:',
+        error instanceof Error ? error.message : error,
+      );
       if (error instanceof UnauthorizedException || error instanceof NotFoundException) {
         throw error;
       }
       throw new UnauthorizedException('Invalid refresh token');
     }
-  }
+  }                                   
 
   // Logout - revoke refresh token
   async logout(userId: string): Promise<void> {
     await this.revokeRefreshToken(userId);
+  }
+
+  // Change password & invalidate existing sessions
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isValid = await this.verifyPassword(oldPassword, user.password);
+    if (!isValid) {
+      throw new BadRequestException('Incorrect current password');
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('New password must be at least 6 characters long');
+    }
+
+    const hashedPassword = await this.hashPassword(newPassword);
+    user.password = hashedPassword;
+    await user.save();
+
+    // Invalidate refresh token & session
+    await this.revokeRefreshToken(userId);
+    await this.redis.set(`session_invalidated:${userId}`, Date.now().toString(), { EX: 86400 });
+
+    return { message: 'Password changed successfully. Please log in again with your new password.' };
   }
 
   // --- 📧 EMAIL VERIFICATION (OTP) ---

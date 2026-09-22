@@ -11,13 +11,19 @@ import * as jwt from 'jsonwebtoken';
 export class JwtAuthGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest();
-        const authHeader: string | undefined = request.headers['authorization'];
+        let token: string | undefined = request.cookies?.accessToken;
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new UnauthorizedException('Missing or invalid Authorization header.');
+        if (!token) {
+            const authHeader: string | undefined = request.headers['authorization'];
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                token = authHeader.slice(7);
+            }
         }
 
-        const token = authHeader.slice(7); // strip "Bearer "
+        if (!token) {
+            throw new UnauthorizedException('Missing or invalid authentication token.');
+        }
+
         const secret = process.env.JWT_SECRET;
 
         if (!secret) {

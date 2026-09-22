@@ -307,9 +307,10 @@ export class InputSanitizer {
     return sanitized;
   }
 
-  // Batch sanitization
+  // Batch sanitization (collects all errors)
   static sanitizeBatch(data: any, schema: any): any {
     const sanitized: any = {};
+    const errors: string[] = [];
 
     for (const key in schema) {
       const value = data[key];
@@ -344,9 +345,13 @@ export class InputSanitizer {
           default:
             sanitized[key] = value;
         }
-      } catch (error) {
-        throw new Error(`Validation failed for ${key}: ${error.message}`);
+      } catch (error: any) {
+        errors.push(`${key}: ${error.message || error}`);
       }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Batch validation failed: ${errors.join('; ')}`);
     }
 
     return sanitized;
@@ -355,11 +360,17 @@ export class InputSanitizer {
 
 // Content Moderator
 export class ContentModerator {
-  // Profanity filter (add your own word list)
+  // Profanity filter with comprehensive defaults + ENV extension
   private static profanityList: Set<string> = new Set([
-    // Add profane words here
-    'badword1', 'badword2', // placeholder
+    'fuck', 'shit', 'asshole', 'bitch', 'cunt', 'dick', 'pussy', 'bastard',
+    'motherfucker', 'whore', 'slut', 'nigger', 'faggot', 'cock', 'wanker',
+    'prick', 'twat', 'bullshit', 'dumbass', 'jackass',
+    ...(process.env.PROFANITY_WORDS ? process.env.PROFANITY_WORDS.split(',') : [])
   ]);
+
+  static addCustomProfanity(words: string[]): void {
+    words.forEach(w => this.profanityList.add(w.toLowerCase().trim()));
+  }
 
   static containsProfanity(text: string): boolean {
     if (!text || typeof text !== 'string') {
@@ -368,7 +379,6 @@ export class ContentModerator {
 
     const lowerText = text.toLowerCase();
 
-    // Check for exact matches and word boundaries
     return Array.from(this.profanityList).some(word => {
       const regex = new RegExp(`\\b${word}\\b`, 'i');
       return regex.test(lowerText);

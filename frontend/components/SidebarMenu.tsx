@@ -333,7 +333,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                 </div>
 
                 {siteUsersTab === 'all' ? (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2">
                         {filteredAll.length > 0
                             ? filteredAll.map((u: any) => (
                                 <div key={u.name || u.username} className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:opacity-90 transition" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}
@@ -353,13 +353,13 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                             ))
                             : (
                                 <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
-                                    {siteUserSearch ? 'No users found' : 'No users online in this room'}
+                                    {siteUserSearch ? 'No users found' : 'No registered users found'}
                                 </p>
                             )
                         }
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2">
                         {filteredBlocked.length > 0
                             ? filteredBlocked.map((username: string) => (
                                 <div key={username} className="flex items-center justify-between p-3 rounded-lg border" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
@@ -430,7 +430,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                 </div>
 
                 {friendsTab === 'list' ? (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2">
                         {friendsList.length > 0 ? (
                             friendsList.map((friend: any) => (
                                 <div key={friend.username} className="flex items-center justify-between p-3 rounded-lg border" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
@@ -487,7 +487,7 @@ export default function SidebarMenu(props: SidebarMenuProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2">
                         {requestsList.length > 0 ? (
                             requestsList.map((req: any) => (
                                 <div key={req._id} className="flex items-center justify-between p-3 rounded-lg border" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>

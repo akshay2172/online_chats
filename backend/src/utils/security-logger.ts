@@ -1,6 +1,6 @@
 // backend/utils/security-logger.ts
 import * as winston from 'winston';
-import * as DailyRotateFile from 'winston-daily-rotate-file';
+import DailyRotateFile = require('winston-daily-rotate-file');
 import * as path from 'path';
 
 export class SecurityLogger {
@@ -315,23 +315,25 @@ export class SecurityLogger {
     });
   }
 
-  static logDatabaseError(error: Error): void {
+  static logDatabaseError(error: Error | unknown): void {
     this.ensureInitialized();
+    const errObj = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error));
     this.logger.error('Database error', {
       type: 'database_error',
-      error: error.message,
-      stack: error.stack,
+      error: errObj.message,
+      stack: errObj.stack,
       timestamp: new Date().toISOString(),
     });
   }
 
   // Error logging
-  static logError(error: Error, context?: any): void {
+  static logError(error: Error | unknown, context?: any): void {
     this.ensureInitialized();
+    const errObj = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error));
     this.logger.error('Application error', {
       type: 'application_error',
-      error: error.message,
-      stack: error.stack,
+      error: errObj.message,
+      stack: errObj.stack,
       context,
       timestamp: new Date().toISOString(),
     });

@@ -101,6 +101,10 @@ export class ChatService {
     return await this.userModel.findOne({ username }).exec();
   }
 
+  async getUserById(userId: string): Promise<UserDocument | null> {
+    return await this.userModel.findById(userId).exec();
+  }
+
   async isGlobalModOrAdmin(username: string): Promise<boolean> {
     const user = await this.userModel.findOne({ username });
     return user?.globalRole === 'admin' || user?.globalRole === 'global_mod';
@@ -621,6 +625,22 @@ export class ChatService {
     return await room.save();
   }
 
+  async findOrCreatePublicRoom(name: string, username: string): Promise<RoomDocument> {
+    return await this.roomModel.findOneAndUpdate(
+      { name, isActive: true },
+      {
+        $setOnInsert: {
+          name,
+          createdBy: username,
+          members: [username],
+          type: 'public',
+          isActive: true,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    ).exec();
+  }
+
   async getRoomByName(name: string): Promise<RoomDocument | null> {
     return await this.roomModel.findOne({ name }).exec();
   }
@@ -774,10 +794,16 @@ export class ChatService {
 
   // --- ⚖️ STRICT HIERARCHY WEIGHT ENGINE ---
   async getUserHierarchyWeight(username: string, roomName?: string): Promise<number> {
-    // 1. Supreme Owner (Environment Variable)
-    if (username === process.env.OWNER_ID) return 100;
+    if (!username) return 0;
 
-    const user = await this.userModel.findOne({ username });
+    // 1. Supreme Owner (Environment Variable)
+    if (this.isOwner(username)) return 100;
+
+    // Fetch user and room documents concurrently to prevent race condition window
+    const [user, roomDoc] = await Promise.all([
+      this.userModel.findOne({ username }).lean(),
+      roomName ? this.roomModel.findOne({ name: roomName }).lean() : Promise.resolve(null),
+    ]);
 
     // 2. Platform Admin
     if (user?.globalRole === 'admin') return 80;
@@ -786,18 +812,29 @@ export class ChatService {
     if (user?.globalRole === 'global_mod') return 60;
 
     // Room specific roles
-    if (roomName) {
-      const roomDoc = await this.roomModel.findOne({ name: roomName });
-      if (roomDoc) {
-        // 4. Room Owner
-        if (roomDoc.createdBy === username) return 40;
-        // 5. Room Moderator
-        if (roomDoc.moderators?.includes(username)) return 20;
-      }
+    if (roomDoc) {
+      // 4. Room Owner
+      if (roomDoc.createdBy === username) return 40;
+      // 5. Room Moderator
+      if (roomDoc.moderators?.includes(username)) return 20;
     }
 
     // 7. Regular User / Guest
     return 0;
+  }
+
+  // --- 🧹 SOFT DELETE & EXPIRED DATA CLEANUP ---
+  async cleanupSoftDeletedMessages(daysOld: number = 30): Promise<{ deletedCount: number }> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    const result = await this.messageModel.deleteMany({
+      isDeleted: true,
+      updatedAt: { $lt: cutoffDate }
+    });
+
+    console.log(`🧹 Cleaned up ${result.deletedCount || 0} soft-deleted messages older than ${daysOld} days`);
+    return { deletedCount: result.deletedCount || 0 };
   }
 
   // --- 🔇 MUTE MANAGEMENT ---
@@ -1288,5 +1325,12 @@ export class ChatService {
       ],
     });
     return !!friendship;
+  }
+
+  async getAllRegisteredUsers(): Promise<any[]> {  
+    return this.userModel.find(  
+      { isPlatformBanned: { $ne: true } },  
+      { username: 1, displayName: 1, avatar: 1, gender: 1, country: 1, status: 1, globalRole: 1, bio: 1 }  
+    ).lean();  
   }
 }

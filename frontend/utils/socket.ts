@@ -1,10 +1,11 @@
-// frontend/utils/socket.ts - FIXED TOKEN HANDLING
+// frontend/utils/socket.ts - HTTP-ONLY COOKIE AUTH
 import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 
 const socket: Socket = io(SOCKET_URL, {
   autoConnect: false,
+  withCredentials: true,
   reconnection: true,
   reconnectionAttempts: 10,
   reconnectionDelay: 1000,
@@ -13,42 +14,19 @@ const socket: Socket = io(SOCKET_URL, {
   transports: ['websocket', 'polling'],
 });
 
-socket.io.on('reconnect_attempt', () => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    socket.auth = { token };
-  } else {
-    socket.auth = {};
-  }
-});
-
 export const connectSocket = () => {
-  console.log('🔗 Connecting socket...');
-  const token = localStorage.getItem('accessToken');
-
-  // If socket is already connected but token has changed, force reconnect  
-  if (socket.connected) {  
-    const currentAuth = socket.auth as any;  
-    const currentToken = currentAuth?.token;  
-    if (currentToken !== token) {  
-      console.log('Token changed, forcing reconnect...');  
-      socket.disconnect();  
-    }  
-  }  
-
-  if (token) {
-    socket.auth = { token };
-    startTokenRefreshInterval(); // Start proactive refresh
-  } else {
-    socket.auth = {};
-    stopTokenRefreshInterval(); // No need for refresh if guest
+  console.log('🔗 Connecting socket with cookies...');
+  if (socket.connected) {
+    socket.disconnect();
   }
   socket.connect();
+  startTokenRefreshInterval();
   return true;
 };
 
 export const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('accessToken');
+  // Username stored for UI; real auth is verified via httpOnly cookie on server
+  return !!localStorage.getItem('username');
 };
 
 export const getStoredUsername = (): string | null => {
@@ -60,11 +38,8 @@ export const disconnectSocket = () => {
   socket.disconnect();
 };
 
-export const setSocketToken = (token: string) => {
-  localStorage.setItem('accessToken', token);
-  socket.auth = { token };
+export const setSocketToken = (token?: string) => {
   startTokenRefreshInterval();
-  // Re-evaluating auth by reconnecting
   if (socket.connected) {
     socket.disconnect();
     socket.connect();
@@ -81,19 +56,8 @@ export const handleAuthExpiry = async () => {
     return true;
   }
 
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) {
-    console.warn('❌ Cannot refresh: No refresh token in localStorage');
-    return false;
-  }
-
   isRefreshing = true;
-  console.log('🔄 Attempting to refresh access token...');
-
-  // ✅ OPTIMIZATION: Check if another tab already refreshed the token
-  // If the socket is currently failing but the token in localStorage is already different 
-  // from what we'd expect, it might have been refreshed elsewhere.
-  // However, since we now use a FUNCTION for socket.auth, simply reconnecting will use the new token.
+  console.log('🔄 Attempting to refresh access token via httpOnly cookie...');
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -101,18 +65,14 @@ export const handleAuthExpiry = async () => {
     const response = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
     });
 
     if (response.ok) {
-      const data = await response.json();
-      console.log('✅ Token refreshed successfully');
+      console.log('✅ Token refreshed successfully via cookie');
 
-      localStorage.setItem('accessToken', data.accessToken);
-
-      // Reconnect with new token
+      // Reconnect socket with refreshed cookie
       socket.disconnect();
-      socket.auth = { token: data.accessToken };
       socket.connect();
 
       isRefreshing = false;
@@ -129,37 +89,29 @@ export const handleAuthExpiry = async () => {
   return false;
 };
 
-// Add at module level  
 let tokenRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
-// New function to start proactive token refresh  
 export const startTokenRefreshInterval = () => {
-  stopTokenRefreshInterval(); // Clear any existing interval  
+  stopTokenRefreshInterval();
 
-  // Refresh every 12 minutes (token expires in 15m, so refresh 3 min early)  
+  // Refresh every 12 minutes (token expires in 15m, so refresh 3 min early)
   tokenRefreshInterval = setInterval(async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return;
-
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
     try {
       const response = await fetch(`${API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        credentials: 'include',
       });
 
       if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('accessToken', data.accessToken);
-        socket.auth = { token: data.accessToken };
-        console.log('🔄 Token proactively refreshed');
+        console.log('🔄 Token proactively refreshed via httpOnly cookie');
       }
     } catch (err) {
       console.error('❌ Proactive token refresh failed:', err);
     }
-  }, 12 * 60 * 1000); // 12 minutes  
+  }, 12 * 60 * 1000); // 12 minutes
 };
 
 export const stopTokenRefreshInterval = () => {

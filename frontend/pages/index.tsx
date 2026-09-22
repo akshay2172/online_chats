@@ -84,14 +84,13 @@ export default function Home() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('accessToken', data.accessToken);
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('username', data.username);
         const genderVal = data.gender || 'other';
         const countryVal = data.country || 'Unknown';
@@ -101,6 +100,11 @@ export default function Home() {
         if (data.bio) localStorage.setItem('bio', data.bio);
         if (data.displayName) localStorage.setItem('displayName', data.displayName);
         if (data.isVerified !== undefined) localStorage.setItem('isVerified', String(data.isVerified));
+
+        // If user is not verified, store userId so they can verify later  
+        if (!data.isVerified && data.userId) {  
+          setOtpUserId(data.userId);  
+        }
 
         setUsername(data.username);
         setGender(genderVal);
@@ -166,9 +170,9 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        addToast('Account created! Please check your email for the verification code.');
+        addToast('Account created! You can now login. Verify your email anytime for full access.');
         setOtpUserId(data.userId); 
-        setView('otp');
+        setView('login');
         setPassword(''); // Clear password
       } else {
         const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;
@@ -209,6 +213,33 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSendOtpFromLogin = async () => {  
+    if (!otpUserId) {  
+      addToast('Please login first to verify your email.');  
+      return;  
+    }  
+    setIsLoading(true);  
+    try {  
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/send-otp`, {  
+        method: 'POST',  
+        headers: { 'Content-Type': 'application/json' },  
+        body: JSON.stringify({ userId: otpUserId }),  
+      });  
+      const data = await response.json();  
+      if (response.ok) {  
+        addToast('Verification code sent to your email.');  
+        setView('otp');  
+      } else {  
+        const errorMessage = Array.isArray(data.message) ? data.message.join(', ') : data.message;  
+        addToast(errorMessage || 'Failed to send verification code.');  
+      }  
+    } catch (error) {  
+      addToast('Error sending verification code.');  
+    } finally {  
+      setIsLoading(false);  
+    }  
   };
 
   const handleResendOtp = async () => {
@@ -257,9 +288,19 @@ export default function Home() {
     });
   };
 
-  const handleGuestLogin = () => {
+  const handleGuestLogin = async () => {
     // Disconnect any existing socket connection from a previous account  
     disconnectSocket();
+
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+    } catch {
+      // Ignore network errors on guest logout
+    }
 
     // Clear any previous registered user session data so guest doesn't inherit identity
     localStorage.removeItem('accessToken');
@@ -395,6 +436,17 @@ export default function Home() {
               >
                 {isLoading ? 'Logging in...' : 'Login'}
               </button>
+
+              {otpUserId && (  
+                <button  
+                  onClick={handleSendOtpFromLogin}  
+                  disabled={isLoading}  
+                  className="w-full py-2 text-purple-400 hover:text-purple-300 transition-colors text-sm"  
+                >  
+                  Verify your email (optional)  
+                </button>  
+              )}
+
               <button
                 onClick={() => setView('choice')}
                 className="w-full py-2 text-gray-400 hover:text-white transition-colors"
@@ -548,10 +600,10 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => setView('choice')}
+                onClick={() => setView('login')}
                 className="w-full py-2 text-gray-500 text-sm hover:text-white transition-colors"
               >
-                ← Back to Home
+                ← Back to Login
               </button>
             </div>
           </div>

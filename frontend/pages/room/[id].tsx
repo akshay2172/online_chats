@@ -74,6 +74,8 @@ export default function Room() {
     const [roomBans, setRoomBans] = useState<any[]>([]);
     const [currentRoomInfo, setCurrentRoomInfo] = useState<{ name?: string; description?: string; type?: string } | null>(null);
 
+    const [siteUsers, setSiteUsers] = useState<any[]>([]);
+    
     const [localQuery, setLocalQuery] = useState<{ username: string; gender: string; country: string; avatar?: string; bio?: string; displayName?: string; status?: string; age?: number } | null>(null);
 
     // DM State
@@ -193,6 +195,7 @@ export default function Room() {
                 });
                 hasJoinedRef.current = true;
                 socket.emit('getRooms');
+                socket.emit('getSiteUsers');
                 // Load DM conversations on connect
                 if (localStorage.getItem('accessToken')) {
                     socket.emit('getDMConversations');
@@ -235,7 +238,7 @@ export default function Room() {
             socket.io.off('reconnect', onReconnect);
             socket.disconnect();
         };
-    }, [id]);
+    }, [id, localQuery?.username]);
 
     // Set up message and user event listeners
     useEffect(() => {
@@ -306,6 +309,7 @@ export default function Room() {
         socket.on('unreadCount', setUnreadCount);
 
         socket.on('updateUsers', setUsers);
+        socket.on('siteUsersList', setSiteUsers);
         socket.on('roomsList', setRooms);
         socket.on('searchResults', (results: any[]) => {
             // Map to the format expected by SearchPanel if necessary
@@ -531,6 +535,7 @@ export default function Room() {
             socket.off('loadPinnedMessages');
             socket.off('unreadCount');
             socket.off('updateUsers');
+            socket.off('siteUsersList');
             socket.off('roomsList');
             socket.off('searchResults');
             socket.off('messageEdited');
@@ -902,7 +907,7 @@ export default function Room() {
                 onCoverUpload={handleCoverUpload}
                 pinnedMessages={pinnedMessages}
                 messages={messages}
-                allSiteUsers={users}
+                allSiteUsers={siteUsers}
                 friends={friends}
                 friendRequests={friendRequests}
                 onSendFriendRequest={handleSendFriendRequest}

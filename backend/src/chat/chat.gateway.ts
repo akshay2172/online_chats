@@ -19,6 +19,9 @@ import { UploadService } from '../upload/upload.service';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { RedisService } from '../redis/redis.service';
+import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { WsException } from '@nestjs/websockets';
+import * as Dto from './dto/chat.dto';
 
 @WebSocketGateway({
   cors: {
@@ -27,6 +30,7 @@ import { RedisService } from '../redis/redis.service';
   },
   maxHttpBufferSize: 10 * 1024 * 1024 // 10MB for file uploads
 })
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: (errors) => new WsException(errors) }))
 export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewayConnection {
 
   async afterInit(server: Server) {
@@ -65,7 +69,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   async handleConnection(client: AuthenticatedSocket) {
     const username = client.data.user?.username || 'guest';
     const ip = client.handshake.address;
-    if (client.data.user) {
+    if (client.data.user?.type === 'access' && username !== 'guest') {
       SecurityLogger.logAuthSuccess(username, ip, client.id);
       // Register socket for DM delivery
       this.chatService.registerUserSocket(username, client.id);
@@ -132,17 +136,30 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     return true;
   }
 
+  // Idempotency deduplication check
+  private async isDuplicateRequest(requestId?: string): Promise<boolean> {
+    if (!requestId) return false;
+    try {
+      const redis = this.redisService.getClient();
+      const key = `idempotency:${requestId}`;
+      const set = await redis.set(key, '1', { EX: 10, NX: true });
+      return set === null;
+    } catch {
+      return false;
+    }
+  }
+
 
 
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(
-    @MessageBody() data: any,
+    @MessageBody() data: Dto.JoinRoomDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
       // --- SECURITY FIX: Guest Identity Segregation ---
       let username = client.data.user?.username;
-      const isGuest = !username;
+      const isGuest = client.data.user?.type === 'guest';
 
       if (isGuest) {
         if (!data.username) {
@@ -166,7 +183,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const country = InputSanitizer.sanitizeText(data.country, 50);
       const gender = InputSanitizer.sanitizeGender(data.gender);
 
-      // --- 🛡️ 1. Check Platform-Level Ban (Registered Users Only) ---
+      const identity = client.data.user;
+      let authenticatedUser: Awaited<ReturnType<ChatService['getUserById']>> = null;
+      if (!isGuest) {
+        if (!identity?.userId || !username) {
+          client.emit('error', { status: 401, message: 'Authentication required' });
+          return;
+        }
+        authenticatedUser = await this.chatService.getUserById(identity.userId);
+        if (!authenticatedUser || authenticatedUser.username !== username) {
+          client.emit('error', { status: 401, message: 'Authentication required' });
+          return;
+        }
+        username = authenticatedUser.username;
+      }
+
+      // Resolve the room before checking membership or joining it.
+      let roomDoc = await this.chatService.getRoomByName(room);
+
+      // --- ðŸ›¡ï¸ 1. Check Platform-Level Ban (Registered Users Only) ---
       if (!isGuest) {
         const isPlatformBanned = await this.chatService.isPlatformBanned(username);
         if (isPlatformBanned) {
@@ -182,27 +217,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      let roomDoc = await this.chatService.getRoomByName(room);
-
       if (!roomDoc && room !== 'general') {
-        client.emit('error', { message: 'Room not found' });
+        client.emit('error', { status: 404, message: 'Room not found' });
         return;
-      }
-
-      // --- 🔒 3. Block direct join of Private rooms (invite link only) ---
-      if (roomDoc && roomDoc.type === 'private') {
-        if (isGuest) {
-          client.emit('error', { message: 'Guest users can only join public rooms.' });
-          return;
-        }
-        const isMember = roomDoc.members?.includes(username);
-        const isRoomOwner = roomDoc.createdBy === username;
-        const isPlatformMod = !isGuest && await this.chatService.isGlobalModOrAdmin(username);
-        const isPlatformOwner = this.chatService.isOwner(username);
-        if (!isMember && !isRoomOwner && !isPlatformMod && !isPlatformOwner) {
-          client.emit('error', { message: 'This room is private. Join via an invite link.' });
-          return;
-        }
       }
 
       // --- 🏠 4. Auto-create room if it doesn't exist ---
@@ -220,17 +237,34 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
           return;
         }
 
-        // Create the room — user automatically becomes Room Owner via createdBy
-        roomDoc = await this.chatService.createRoom({
-          name: room, createdBy: username, members: [username], type: 'public', isActive: true,
-        });
+        // Create the room â€” user automatically becomes Room Owner via createdBy
+        roomDoc = await this.chatService.findOrCreatePublicRoom(room, username);
       }
 
-      // Auto-promote dev owner if applicable — now uses env-based OWNER_ID, not admins array
+      // Re-check after the atomic upsert: a concurrent request may have
+      // created a private room while this join request was in flight.
+      if (roomDoc.type === 'private') {
+        if (isGuest) {
+          client.emit('error', { status: 403, message: 'Forbidden: private rooms require membership' });
+          return;
+        }
+        const isMember = authenticatedUser &&
+          roomDoc.members?.includes(authenticatedUser.username);
+        if (!isMember) {
+          client.emit('error', { status: 403, message: 'Forbidden: you are not a member of this private room' });
+          return;
+        }
+      }
+
+      // Auto-promote dev owner if applicable â€” now uses env-based OWNER_ID, not admins array
       // (legacy admin_owner promotion removed; use OWNER_ID in .env instead)
 
       // Join Socket.io room
       client.join(room);
+      if (isGuest) {
+        client.data.user!.username = username;
+        client.data.user!.type = 'guest';
+      }
 
       // Fetch displayName from DB for registered users
       let displayName = data.displayName || username;
@@ -239,12 +273,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         if (dbUser?.displayName) displayName = dbUser.displayName;
       }
 
-      // Before adding user to room, prune stale entries for ANY user whose socket is no longer connected  
-      const existingUsers = await this.chatService.getUsersInRoom(room);  
-      for (const existing of existingUsers) {  
-          if (!this.server.sockets.sockets.has(existing.socketId)) {  
-              await this.chatService.removeStaleSocketEntry(room, existing.socketId);  
-          }  
+      // Before adding user to room, prune stale entries for ANY user whose socket is no longer connected
+      const existingUsers = await this.chatService.getUsersInRoom(room);
+      for (const existing of existingUsers) {
+          if (!this.server.sockets.sockets.has(existing.socketId)) {
+              await this.chatService.removeStaleSocketEntry(room, existing.socketId);
+          }
       }
 
       // Add to active users in memory
@@ -298,7 +332,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('getRoomInfo')
   async handleGetRoomInfo(
-    @MessageBody() data: { room: string },
+    @MessageBody() data: Dto.RoomInfoDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -343,7 +377,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   }
 
   @SubscribeMessage('getRoomById')
-  async handleGetRoomById(@MessageBody() data: { roomId: string }, @ConnectedSocket() client: AuthenticatedSocket) {
+  async handleGetRoomById(@MessageBody() data: Dto.RoomIdDto, @ConnectedSocket() client: AuthenticatedSocket) {
     try {
       const room = await this.chatService.getRoomById(data.roomId);
       if (!room) {
@@ -362,14 +396,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   }
   @SubscribeMessage('sendMessage')
   async handleMessage(
-    @MessageBody() data: any,
+    @MessageBody() data: Dto.SendMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
+      const username = client.data.user?.username;
 
       if (!username) {
-        client.emit('error', { message: 'Username required' });
+        client.emit('error', { message: 'Authentication required' });
         return;
       }
 
@@ -392,7 +426,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 3. CHECK ROOM BAN — banned users cannot message even if they slipped past joinRoom
+      // 3. CHECK ROOM BAN â€” banned users cannot message even if they slipped past joinRoom
       const isRoomBanned = await this.chatService.isUserBanned(data.room, username);
       if (isRoomBanned) {
         client.emit('error', { message: 'You are banned from this room and cannot send messages.' });
@@ -496,7 +530,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
           const roomUsers = await this.chatService.getUsersInRoom(data.room);
           const mentionedUserData = roomUsers.find(u => u.name === mentionedUser);
 
-          // 🔔 1. Real-time socket notification (existing behavior)
+          // ðŸ”” 1. Real-time socket notification (existing behavior)
           if (mentionedUserData) {
             this.server.to(mentionedUserData.socketId).emit('mention', {
               messageId: message._id,
@@ -505,7 +539,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
             });
           }
 
-          // 💾 2. Persistent DB notification (NEW – what you want to add)
+          // ðŸ’¾ 2. Persistent DB notification (NEW â€“ what you want to add)
           await this.notificationService.createMentionNotification(
             mentionedUser,
             username,
@@ -526,14 +560,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('sendGif')
   async handleSendGif(
-    @MessageBody() data: any,
+    @MessageBody() data: Dto.SendGifDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
+      const username = client.data.user?.username;
 
       if (!username) {
-        client.emit('error', { message: 'Username required' });
+        client.emit('error', { message: 'Authentication required' });
         return;
       }
       const ip = client.handshake.address;
@@ -581,11 +615,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('editMessage')
   async handleEditMessage(
-    @MessageBody() data: {
-      messageId: string;
-      newMessage: string;
-      room: string;
-    },
+    @MessageBody() data: Dto.EditMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -594,7 +624,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         client.emit('error', { message: 'Authentication required to edit messages.' });
         return;
       }
-      // Fetch the original message and verify ownership  
+      // Fetch the original message and verify ownership
       const original = await this.chatService.getMessageById(data.messageId);
       if (!original || original.sender !== username) {
         client.emit('error', { message: 'You can only edit your own messages.' });
@@ -625,10 +655,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('deleteMessage')
   async handleDeleteMessage(
-    @MessageBody() data: {
-      room: string;
-      messageId: string;
-    },
+    @MessageBody() data: Dto.RoomMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -671,13 +698,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('reactMessage')
   async handleReaction(
-    @MessageBody() data: {
-      room: string;
-      messageId: string;
-      emoji: string;
-      username: string; // Deprecated: keep for compatibility but do not trust
-      action: 'add' | 'remove';
-    },
+    @MessageBody() data: Dto.ReactMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -717,11 +738,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('markAsRead')
   async handleMarkAsRead(
-    @MessageBody() data: {
-      messageId: string;
-      username: string; // Deprecated
-      room: string;
-    },
+    @MessageBody() data: Dto.MarkAsReadDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -747,10 +764,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('markRoomAsRead')
   async handleMarkRoomAsRead(
-    @MessageBody() data: {
-      room: string;
-      username: string; // Deprecated
-    },
+    @MessageBody() data: Dto.MarkRoomAsReadDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -770,24 +784,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('searchMessages')
   async handleSearchMessages(
-    @MessageBody() data: {
-      room: string;
-      query: string;
-      filters?: {
-        from?: string;
-        has?: string;
-        before?: string;
-        after?: string;
-        mentions?: string;
-      };
-      username?: string; // fallback
-    },
+    @MessageBody() data: Dto.SearchMessagesDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
+      const username = client.data.user?.username;
       if (!username) {
-        client.emit('error', { message: 'Username required' });
+        client.emit('error', { message: 'Authentication required' });
         return;
       }
 
@@ -816,10 +819,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('pinMessage')
   async handlePinMessage(
-    @MessageBody() data: {
-      room: string;
-      messageId: string;
-    },
+    @MessageBody() data: Dto.RoomMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -858,10 +858,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('unpinMessage')
   async handleUnpinMessage(
-    @MessageBody() data: {
-      room: string;
-      messageId: string;
-    },
+    @MessageBody() data: Dto.RoomMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -902,24 +899,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('uploadFile')
   async handleFileUpload(
-    @MessageBody() data: {
-      room: string;
-      username: string;
-      fileData: {
-        filename: string;
-        originalName: string;
-        mimetype: string;
-        size: number;
-        url: string;
-        base64?: string;
-      };
-    },
+    @MessageBody() data: Dto.UploadFileDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
+      const username = client.data.user?.username;
       if (!username) {
-        client.emit('error', { message: 'Username required' });
+        client.emit('error', { message: 'Authentication required' });
         return;
       }
       const ip = client.handshake.address;
@@ -945,12 +931,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('reportMessage')
   async handleReportMessage(
-    @MessageBody() data: {
-      room: string;
-      messageId: string;
-      reportedBy: string; // Deprecated
-      reason?: string;
-    },
+    @MessageBody() data: Dto.ReportMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -980,18 +961,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('typing')
   handleTyping(
-    @MessageBody() data: { room: string; username: string; isTyping: boolean },
+    @MessageBody() data: Dto.TypingDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
+    const username = client.data.user?.username;
+    if (!username) {
+      client.emit('error', { message: 'Authentication required' });
+      return;
+    }
+
     client.to(data.room).emit('userTyping', {
-      username: data.username,
+      username,
       isTyping: data.isTyping,
     });
   }
 
   @SubscribeMessage('dmTyping')
   async handleDMTyping(
-    @MessageBody() data: { conversationId: string; receiverUsername: string; isTyping: boolean },
+    @MessageBody() data: Dto.DmTypingDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     const username = client.data.user?.username;
@@ -1009,10 +996,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('updateProfile')
   async handleUpdateProfile(
-    @MessageBody() data: {
-      username: string;
-      updates: any;
-    },
+    @MessageBody() data: Dto.UpdateProfileDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1051,11 +1035,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   // Room Management
   @SubscribeMessage('createRoom')
   async handleCreateRoom(
-    @MessageBody() data: {
-      name: string;
-      description?: string;
-      type: 'public' | 'private';
-    },
+    @MessageBody() data: Dto.CreateRoomDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1104,19 +1084,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('joinRoomById')
   async handleJoinRoomById(
-    @MessageBody() data: any,
+    @MessageBody() data: Dto.JoinRoomByIdDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
-      if (!username) {
-        client.emit('error', { message: 'Username required' });
+      const identity = client.data.user;
+      if (identity?.type !== 'access' || !identity.userId || !identity.username) {
+        client.emit('error', { status: 401, message: 'Authentication required' });
         return;
       }
+      const authenticatedUser = await this.chatService.getUserById(identity.userId);
+      if (!authenticatedUser || authenticatedUser.username !== identity.username) {
+        client.emit('error', { status: 401, message: 'Authentication required' });
+        return;
+      }
+      const username = authenticatedUser.username;
 
       const room = await this.chatService.getRoomById(data.roomId);
       if (!room) {
-        client.emit('error', { message: 'Room not found' });
+        client.emit('error', { status: 404, message: 'Room not found' });
         return;
       }
 
@@ -1127,19 +1113,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // Check private room access — invite link only
+      // Check private room access â€” invite link only
       if (room.type === 'private') {
-        const isGuest = !client.data.user;
-        if (isGuest) {
-          client.emit('error', { message: 'Guest users can only join public rooms.' });
-          return;
-        }
         const isMember = room.members?.includes(username);
-        const isRoomOwner = room.createdBy === username;
-        const isPlatformMod = await this.chatService.isGlobalModOrAdmin(username);
-        const isPlatformOwner = this.chatService.isOwner(username);
-        if (!isMember && !isRoomOwner && !isPlatformMod && !isPlatformOwner) {
-          client.emit('error', { message: 'This room is private. Join via an invite link.' });
+        if (!isMember) {
+          client.emit('error', { status: 403, message: 'Forbidden: you are not a member of this private room' });
           return;
         }
       }
@@ -1183,7 +1161,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('blockUser')
   async handleBlockUser(
-    @MessageBody() data: { usernameToBlock: string },
+    @MessageBody() data: Dto.TargetUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1202,7 +1180,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('unblockUser')
   async handleUnblockUser(
-    @MessageBody() data: { usernameToUnblock: string },
+    @MessageBody() data: Dto.TargetUnblockUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1221,7 +1199,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('reportUser')
   async handleReportUser(
-    @MessageBody() data: { usernameToReport: string; reason?: string },
+    @MessageBody() data: Dto.ReportUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1241,7 +1219,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('inviteUserToRoom')
   async handleInviteUserToRoom(
-    @MessageBody() data: { targetUsername: string; roomId: string },
+    @MessageBody() data: Dto.InviteUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1284,10 +1262,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('deleteRoom')
   async handleDeleteRoom(
-    @MessageBody() data: {
-      roomId: string;
-      username: string;
-    },
+    @MessageBody() data: Dto.DeleteRoomDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1303,7 +1278,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 Owner can delete ANY room regardless of ownership
+      // ðŸ‘‘ Owner can delete ANY room regardless of ownership
       const isOwner = this.chatService.isOwner(requestUser);
       const isAdmin = await this.chatService.isGlobalModOrAdmin(requestUser);
       if (!isOwner && !isAdmin && room.createdBy !== requestUser) {
@@ -1326,10 +1301,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   // Moderation
   @SubscribeMessage('kickUser')
   async handleKickUser(
-    @MessageBody() data: {
-      room: string;
-      username: string;
-    },
+    @MessageBody() data: Dto.ModerationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1346,13 +1318,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       const roomDoc = await this.chatService.getRoomByName(room);
       if (!roomDoc) return;
 
-      // 👑 OWNER PROTECTION: Nobody can kick the platform owner
+      // ðŸ‘‘ OWNER PROTECTION: Nobody can kick the platform owner
       if (this.chatService.isOwner(targetUsername)) {
         client.emit('error', { message: 'You cannot kick the platform owner.' });
         return;
       }
 
-      // ⚖️ HIERARCHY ENGINE: compute weights for both sides (room-aware)
+      // âš–ï¸ HIERARCHY ENGINE: compute weights for both sides (room-aware)
       const actorWeight = await this.chatService.getUserHierarchyWeight(moderator, room);
       const targetWeight = await this.chatService.getUserHierarchyWeight(targetUsername, room);
 
@@ -1395,7 +1367,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('banUser')
   async handleBanUser(
-    @MessageBody() data: any,
+    @MessageBody() data: Dto.BanUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1415,13 +1387,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 OWNER PROTECTION: Nobody can ban the platform owner
+      // ðŸ‘‘ OWNER PROTECTION: Nobody can ban the platform owner
       if (this.chatService.isOwner(username)) {
         client.emit('error', { message: 'You cannot ban the platform owner.' });
         return;
       }
 
-      // ⚖️ HIERARCHY ENGINE
+      // âš–ï¸ HIERARCHY ENGINE
       const actorWeight = await this.chatService.getUserHierarchyWeight(moderator, room);
       const targetWeight = await this.chatService.getUserHierarchyWeight(username, room);
 
@@ -1438,10 +1410,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       // Execute Ban
       await this.chatService.banUserFromRoom(room, username, moderator, data.reason, data.duration);
 
-      const userSocket = await this.chatService.getUserSocketId(room, username);
-      if (userSocket) {
-        this.server.to(userSocket).emit('banned', { room, by: moderator, reason: data.reason, duration: data.duration });
-        const socket = this.server.sockets.sockets.get(userSocket);
+      const userSockets = await this.chatService.getUserSocketIds(username);
+      for (const socketId of userSockets) {
+        this.server.to(socketId).emit('banned', { room, by: moderator, reason: data.reason, duration: data.duration });
+        const socket = this.server.sockets.sockets.get(socketId);
         if (socket) socket.leave(room);
       }
 
@@ -1463,11 +1435,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('muteUser')
   async handleMuteUser(
-    @MessageBody() data: {
-      room: string;
-      username: string;
-      reason?: string;
-    },
+    @MessageBody() data: Dto.ModerationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1487,13 +1455,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 OWNER PROTECTION: Nobody can mute the platform owner
+      // ðŸ‘‘ OWNER PROTECTION: Nobody can mute the platform owner
       if (this.chatService.isOwner(targetUsername)) {
         client.emit('error', { message: 'You cannot mute the platform owner.' });
         return;
       }
 
-      // ⚖️ HIERARCHY ENGINE
+      // âš–ï¸ HIERARCHY ENGINE
       const actorWeight = await this.chatService.getUserHierarchyWeight(moderator, room);
       const targetWeight = await this.chatService.getUserHierarchyWeight(targetUsername, room);
 
@@ -1528,7 +1496,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('unmuteUser')
   async handleUnmuteUser(
-    @MessageBody() data: { room: string; username: string },
+    @MessageBody() data: Dto.ModerationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1548,7 +1516,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // ⚖️ HIERARCHY ENGINE
+      // âš–ï¸ HIERARCHY ENGINE
       const actorWeight = await this.chatService.getUserHierarchyWeight(moderator, room);
       const targetWeight = await this.chatService.getUserHierarchyWeight(targetUsername, room);
 
@@ -1580,7 +1548,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   // --- NEW: Unban User from Room ---
   @SubscribeMessage('unbanUser')
   async handleUnbanUser(
-    @MessageBody() data: { room: string; username: string },
+    @MessageBody() data: Dto.ModerationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1599,25 +1567,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 Owner can unban anyone anywhere
+      // ðŸ‘‘ Owner can unban anyone anywhere
       const isActorOwner = this.chatService.isOwner(moderator);
       const isActorGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
 
       // Get ban metadata (who placed the ban)
       const activeBans = await this.chatService.getRoomBans(room);
       const userBan = activeBans.find(b => b.username === username);
-      
+
       if (userBan) {
         const bannedBy = userBan.bannedBy;
         const bannedByIsOwner = this.chatService.isOwner(bannedBy);
         const bannedByIsGlobalMod = await this.chatService.isGlobalModOrAdmin(bannedBy);
-      
+
         if ((bannedByIsOwner || bannedByIsGlobalMod) && !isActorOwner && !isActorGlobalMod) {
           client.emit('error', { message: 'You do not have permission to unban a user banned by platform staff.' });
           return;
         }
       }
-      
+
       const canUnban = isActorOwner || isActorGlobalMod || roomDoc.createdBy === moderator || roomDoc.moderators?.includes(moderator);
       if (!canUnban) {
         client.emit('error', { message: 'You do not have permission to unban users' });
@@ -1643,7 +1611,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   // --- NEW: Get Room Bans ---
   @SubscribeMessage('getRoomBans')
   async handleGetRoomBans(
-    @MessageBody() data: { room: string },
+    @MessageBody() data: Dto.RoomInfoDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1680,7 +1648,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   // --- NEW: Platform Ban (Global Mod/Admin only) ---
   @SubscribeMessage('platformBan')
   async handlePlatformBan(
-    @MessageBody() data: { username: string; reason?: string },
+    @MessageBody() data: Dto.PlatformBanDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1692,7 +1660,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
       const targetUsername = InputSanitizer.sanitizeUsername(data.username);
 
-      // 👑 OWNER PROTECTION: Nobody can platform-ban the owner
+      // ðŸ‘‘ OWNER PROTECTION: Nobody can platform-ban the owner
       if (this.chatService.isOwner(targetUsername)) {
         client.emit('error', { message: 'You cannot platform-ban the platform owner.' });
         SecurityLogger.logSuspiciousActivity(
@@ -1702,7 +1670,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // 👑 Owner can platform-ban anyone without needing globalMod role
+      // ðŸ‘‘ Owner can platform-ban anyone without needing globalMod role
       const isActorOwner = this.chatService.isOwner(moderator);
       const isGlobalMod = await this.chatService.isGlobalModOrAdmin(moderator);
       if (!isActorOwner && !isGlobalMod) {
@@ -1748,11 +1716,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('promoteUser')
   async handlePromoteUser(
-    @MessageBody() data: {
-      room: string;
-      username: string;
-      role: 'admin' | 'moderator' | 'member';
-    },
+    @MessageBody() data: Dto.PromoteUserDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -1802,7 +1766,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      // Room-ban check — if they're banned from the room, disallow room-level promotions
+      // Room-ban check â€” if they're banned from the room, disallow room-level promotions
       const isRoomBanned = await this.chatService.isUserBanned(data.room, data.username);
       if (isRoomBanned) {
         client.emit('error', { message: 'Target user is banned from the room.' });
@@ -1907,13 +1871,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('leaveRoom')
   async handleLeaveRoom(
-    @MessageBody() data: { room: string; username: string },
+    @MessageBody() data: Dto.ModerationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
-      const username = client.data.user?.username || data.username;
+      const username = client.data.user?.username;
       if (!username) {
-        client.emit('error', { message: 'Username required' });
+        client.emit('error', { message: 'Authentication required' });
         return;
       }
       const room = InputSanitizer.sanitizeRoomName(data.room);
@@ -1969,7 +1933,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('startDM')
   async handleStartDM(
-    @MessageBody() data: { targetUsername: string; username?: string },
+    @MessageBody() data: Dto.StartDmDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2048,7 +2012,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         messages: messages.reverse(),
       });
     } catch (error) {
-      console.error('❌ startDM error:', error);
+      console.error('âŒ startDM error:', error);
       SecurityLogger.logError(error, { event: 'startDM', user: client.data.user?.username });
       client.emit('error', { message: 'Failed to start DM.' });
     }
@@ -2056,15 +2020,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('sendDMMessage')
   async handleSendDMMessage(
-    @MessageBody() data: {
-      conversationId: string;
-      message: string;
-      receiver: string;
-      username?: string;
-      messageType?: string;
-      fileData?: any;
-      replyTo?: string;
-    },
+    @MessageBody() data: Dto.SendDmMessageDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2192,7 +2148,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('loadDMMessages')
   async handleLoadDMMessages(
-    @MessageBody() data: { conversationId: string; skip?: number },
+    @MessageBody() data: Dto.LoadDmMessagesDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2220,7 +2176,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('markDMAsRead')
   async handleMarkDMAsRead(
-    @MessageBody() data: { conversationId: string },
+    @MessageBody() data: Dto.ConversationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2252,7 +2208,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('deleteDMConversation')
   async handleDeleteDMConversation(
-    @MessageBody() data: { conversationId: string },
+    @MessageBody() data: Dto.ConversationDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2272,7 +2228,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('pinDMMessage')
   async handlePinDMMessage(
-    @MessageBody() data: { conversationId: string; messageId: string },
+    @MessageBody() data: Dto.DmMessageRefDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2299,7 +2255,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('unpinDMMessage')
   async handleUnpinDMMessage(
-    @MessageBody() data: { conversationId: string; messageId: string },
+    @MessageBody() data: Dto.DmMessageRefDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2326,7 +2282,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('reportDMMessage')
   async handleReportDMMessage(
-    @MessageBody() data: { conversationId: string; messageId: string },
+    @MessageBody() data: Dto.DmMessageRefDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2342,7 +2298,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   }
   @SubscribeMessage('reactDMMessage')
   async handleReactDM(
-    @MessageBody() data: { conversationId: string; messageId: string; emoji: string; action: 'add' | 'remove' },
+    @MessageBody() data: Dto.ReactDmDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2373,7 +2329,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('deleteDMMessage')
   async handleDeleteDMMessage(
-    @MessageBody() data: { conversationId: string; messageId: string },
+    @MessageBody() data: Dto.DmMessageRefDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2397,7 +2353,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('editDMMessage')
   async handleEditDMMessage(
-    @MessageBody() data: { conversationId: string; messageId: string; newMessage: string },
+    @MessageBody() data: Dto.EditDmDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2422,7 +2378,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('sendDMGif')
   async handleSendDMGif(
-    @MessageBody() data: { conversationId: string; receiver: string; gifUrl: string; gifData?: any },
+    @MessageBody() data: Dto.SendDmGifDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2469,7 +2425,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('uploadDMFile')
   async handleUploadDMFile(
-    @MessageBody() data: { conversationId: string; receiver: string; fileData: any },
+    @MessageBody() data: Dto.UploadDmFileDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2520,7 +2476,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('getUserProfile')
   async handleGetUserProfile(
-    @MessageBody() data: { username: string },
+    @MessageBody() data: Dto.UserProfileDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2548,7 +2504,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('uploadAvatar')
   async handleUploadAvatar(
-    @MessageBody() data: { imageData: string; filename: string },
+    @MessageBody() data: Dto.ImageUploadDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2587,7 +2543,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('uploadCoverPhoto')
   async handleUploadCoverPhoto(
-    @MessageBody() data: { imageData: string; filename: string },
+    @MessageBody() data: Dto.ImageUploadDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2637,7 +2593,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('sendFriendRequest')
   async handleSendFriendRequest(
-    @MessageBody() data: { targetUsername: string },
+    @MessageBody() data: Dto.FriendRequestDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2698,7 +2654,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('respondFriendRequest')
   async handleRespondFriendRequest(
-    @MessageBody() data: { requestId: string; action: 'accept' | 'reject' },
+    @MessageBody() data: Dto.RespondFriendRequestDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2768,7 +2724,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('removeFriend')
   async handleRemoveFriend(
-    @MessageBody() data: { friendUsername: string },
+    @MessageBody() data: Dto.RemoveFriendDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {
@@ -2794,6 +2750,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       }
     } catch (error) {
       client.emit('error', { message: error.message || 'Failed to remove friend.' });
+    }
+  }
+
+  @SubscribeMessage('getSiteUsers')
+  async handleGetSiteUsers(
+    @ConnectedSocket() client: AuthenticatedSocket,
+  ) {
+    try {
+      const users = await this.chatService.getAllRegisteredUsers();
+      const mapped = users.map(u => ({
+        name: u.username,
+        username: u.username,
+        displayName: u.displayName || u.username,
+        avatar: u.avatar || null,
+        gender: u.gender || 'other',
+        country: u.country || 'Unknown',
+        status: u.status || 'offline',
+        globalRole: u.globalRole || 'user',
+      }));
+      client.emit('siteUsersList', mapped);
+    } catch (error) {
+      client.emit('error', { message: 'Failed to fetch site users' });
     }
   }
 }

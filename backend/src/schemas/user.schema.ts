@@ -6,22 +6,32 @@ export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
 export class User {
-  @Prop({ required: true, unique: true })
+  @Prop({
+    required: true,
+    unique: true,
+    minlength: 3,
+    maxlength: 30,
+    match: [/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores, and hyphens'],
+  })
   username: string;
 
-  @Prop({ required: true })
+  @Prop({
+    required: true,
+    unique: true,
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address'],
+  })
   email: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, minlength: 6 })
   password: string; // Should be hashed
 
-  @Prop({ type: String })
+  @Prop({ type: String, maxlength: 50 })
   displayName?: string;
 
-  @Prop({ type: String })
+  @Prop({ type: String, enum: ['male', 'female', 'other'], default: 'other' })
   gender: 'male' | 'female' | 'other';
 
-  @Prop({ type: String })
+  @Prop({ type: String, maxlength: 100 })
   country: string;
 
   @Prop({ type: String })
@@ -30,14 +40,14 @@ export class User {
   @Prop({ type: String })
   coverPhoto?: string; // URL or base64
 
-  @Prop({ type: String })
+  @Prop({ type: String, maxlength: 500 })
   bio?: string;
 
-  @Prop({ type: Number })
+  @Prop({ type: Number, min: 13, max: 120 })
   age?: number;
 
-  @Prop({ type: String })
-  status: 'online' | 'offline' | 'away' | 'busy';
+  @Prop({ type: String, enum: ['online', 'offline', 'away', 'busy', 'dnd'], default: 'offline' })
+  status: 'online' | 'offline' | 'away' | 'busy' | 'dnd';
 
   @Prop({ type: Date })
   lastSeen?: Date;
