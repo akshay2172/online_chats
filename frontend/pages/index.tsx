@@ -113,7 +113,7 @@ export default function Home() {
 
         // Auto-join general chat
         router.push({
-          pathname: '/room/general chat',
+          pathname: '/room/general',
           query: {
             username: data.username,
             gender: genderVal,
@@ -277,7 +277,7 @@ export default function Home() {
     if (!gender) return addToast('Please select your gender');
     if (!country) return addToast('Please select your country');
 
-    const room = 'general chat';
+    const room = 'general';
     router.push({
       pathname: `/room/${room}`,
       query: {
@@ -647,6 +647,9 @@ export default function Home() {
               />
               {isLoggedIn && (
                 <p className="text-xs text-gray-500 mt-1">Username cannot be changed for registered accounts</p>
+              )}
+              {!isLoggedIn && (
+                <p className="text-xs text-gray-500 mt-1">Use 3-20 characters: letters, numbers, underscores, or hyphens.</p>
               )}
             </div>
 

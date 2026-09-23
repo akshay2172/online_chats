@@ -1873,7 +1873,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
   @SubscribeMessage('leaveRoom')
   async handleLeaveRoom(
-    @MessageBody() data: Dto.ModerationDto,
+    @MessageBody() data: Dto.RoomDto,
     @ConnectedSocket() client: AuthenticatedSocket,
   ) {
     try {

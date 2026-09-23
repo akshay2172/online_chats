@@ -898,7 +898,7 @@ const ChatWindow: React.FC<Props> = ({
                                   </button>
 
                                   {/* Only show 'Room Ban' if NOT in 'generalchat' */}
-                                  {roomName !== 'general chat' && (
+                                  {roomName !== 'general' && roomName !== 'general chat' && (
                                     <button
                                       onClick={() => {
                                         onBanUser?.(msg.sender);

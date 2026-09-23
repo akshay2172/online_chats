@@ -70,26 +70,22 @@ export default function ProfilePage() {
 
     const handleUpdate = (updates: any) => {
         if (socket && activeUsername === username) {
-            socket.emit('updateProfile', { username: activeUsername, updates });
+            socket.emit('updateProfile', { updates });
         }
     };
 
     const handleAvatarUpload = async (file: File) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/upload`, {
-            method: 'POST',
-            body: formData
+        const imageData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => typeof reader.result === 'string'
+                ? resolve(reader.result)
+                : reject(new Error('Unable to read image'));
+            reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+            reader.readAsDataURL(file);
         });
-        if (!response.ok) throw new Error('Upload failed');
-        const { url, filename } = await response.json();
 
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-        const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
-
-        // Emit to server to save it to user profile
-        socket.emit('uploadAvatar', { username: activeUsername, fileData: { filename, url: fullUrl } });
-        return fullUrl;
+        socket.emit('uploadAvatar', { filename: file.name, imageData });
+        return imageData;
     };
 
     if (loading) {

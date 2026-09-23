@@ -16,6 +16,13 @@ export class WsExceptionFilter extends BaseWsExceptionFilter {
         message = (error as any).message;
       } else if (Array.isArray((error as any).message)) {
         message = (error as any).message.join(', ');
+      } else if (Array.isArray(error)) {
+        const validationMessages = error.flatMap((item: any) =>
+          Array.isArray(item?.constraints) ? item.constraints : Object.values(item?.constraints || {}),
+        );
+        if (validationMessages.length > 0) {
+          message = validationMessages.join(', ');
+        }
       }
     }
 

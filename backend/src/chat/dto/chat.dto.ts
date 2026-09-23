@@ -2,7 +2,7 @@ import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 const USER = /^[A-Za-z0-9_]{1,50}$/;
-const ROOM = /^[A-Za-z0-9_-]{1,80}$/;
+const ROOM = /^[a-zA-Z0-9\s\-_]{3,50}$/;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export class FileDataDto {
@@ -20,11 +20,11 @@ export class GifDataDto { @IsOptional() @IsNumber() @Min(0) @Max(10000) width?: 
 export class SearchFiltersDto { @IsOptional() @IsString() @MaxLength(50) from?: string; @IsOptional() @IsString() @MaxLength(100) has?: string; @IsOptional() @IsString() @MaxLength(40) before?: string; @IsOptional() @IsString() @MaxLength(40) after?: string; @IsOptional() @IsString() @MaxLength(50) mentions?: string; }
 export class ProfileUpdatesDto { @IsOptional() @IsString() @MaxLength(100) displayName?: string; @IsOptional() @IsString() @MaxLength(500) bio?: string; @IsOptional() @IsString() @MaxLength(2048) avatar?: string; @IsOptional() @IsString() @MaxLength(2048) coverPhoto?: string; }
 
-export class RoomDto { @IsString() @IsNotEmpty() @MaxLength(80) @Matches(ROOM) room: string; }
+export class RoomDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(ROOM) room: string; }
 export class UsernameDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(USER) username: string; }
 export class ConversationDto { @IsString() @IsNotEmpty() @MaxLength(128) @Matches(ID) conversationId: string; }
 export class MessageRefDto { @IsString() @IsNotEmpty() @MaxLength(128) @Matches(ID) messageId: string; }
-export class JoinRoomDto { @IsString() @IsNotEmpty() @MaxLength(80) @Matches(ROOM) room: string; @IsOptional() @IsString() @MaxLength(50) @Matches(USER) username?: string; @IsOptional() @IsString() @MaxLength(50) country?: string; @IsOptional() @IsEnum(['male','female','other']) gender?: 'male'|'female'|'other'; @IsOptional() @IsString() @MaxLength(100) displayName?: string; @IsOptional() @IsString() @MaxLength(2048) avatar?: string; }
+export class JoinRoomDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(ROOM) room: string; @IsOptional() @IsString() @MaxLength(50) @Matches(USER) username?: string; @IsOptional() @IsString() @MaxLength(50) country?: string; @IsOptional() @IsEnum(['male','female','other']) gender?: 'male'|'female'|'other'; @IsOptional() @IsString() @MaxLength(100) displayName?: string; @IsOptional() @IsString() @MaxLength(2048) avatar?: string; }
 export class RoomInfoDto extends RoomDto {}
 export class RoomIdDto { @IsString() @IsNotEmpty() @MaxLength(128) @Matches(ID) roomId: string; }
 export class SendMessageDto extends RoomDto { @IsString() @IsNotEmpty() @MaxLength(10000) message: string; @IsOptional() @IsString() @MaxLength(30) messageType?: string; @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(50, { each: true }) mentions?: string[]; @IsOptional() @IsString() @MaxLength(128) @Matches(ID) replyTo?: string; }
@@ -40,7 +40,7 @@ export class ReportMessageDto extends RoomMessageDto { @IsOptional() @IsString()
 export class TypingDto extends RoomDto { @IsBoolean() isTyping: boolean; }
 export class DmTypingDto extends ConversationDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(USER) receiverUsername: string; @IsBoolean() isTyping: boolean; }
 export class UpdateProfileDto { @ValidateNested() @Type(() => ProfileUpdatesDto) updates: ProfileUpdatesDto; }
-export class CreateRoomDto { @IsString() @IsNotEmpty() @MaxLength(80) @Matches(ROOM) name: string; @IsOptional() @IsString() @MaxLength(500) description?: string; @IsEnum(['public','private']) type: 'public'|'private'; }
+export class CreateRoomDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(ROOM) name: string; @IsOptional() @IsString() @MaxLength(500) description?: string; @IsEnum(['public','private']) type: 'public'|'private'; }
 export class JoinRoomByIdDto extends RoomIdDto { @IsOptional() @IsString() @MaxLength(100) displayName?: string; @IsOptional() @IsString() @MaxLength(50) country?: string; @IsOptional() @IsEnum(['male','female','other']) gender?: 'male'|'female'|'other'; @IsOptional() @IsString() @MaxLength(2048) avatar?: string; }
 export class TargetUserDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(USER) usernameToBlock: string; }
 export class TargetUnblockUserDto { @IsString() @IsNotEmpty() @MaxLength(50) @Matches(USER) usernameToUnblock: string; }
@@ -65,4 +65,3 @@ export class RespondFriendRequestDto { @IsString() @MaxLength(128) @Matches(ID) 
 export class RemoveFriendDto { @IsString() @MaxLength(50) @Matches(USER) friendUsername: string; }
 
 export class PlatformBanDto extends UsernameDto { @IsOptional() @IsString() @MaxLength(1000) reason?: string; }
-

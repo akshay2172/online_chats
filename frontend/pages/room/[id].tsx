@@ -48,7 +48,8 @@ interface Message {
 
 export default function Room() {
     const router = useRouter();
-    const { id } = router.query;
+    const rawRoomId = router.query.id;
+    const id = typeof rawRoomId === 'string' ? rawRoomId.trim() : '';
     const [activeUsername, setActiveUsername] = useState<string>('');
     const activeUsernameRef = useRef(activeUsername);
 
@@ -632,7 +633,12 @@ export default function Room() {
     // Apply activeUsername to all action emitters safely
     const handleSend = useCallback((messageText: string, replyToId?: string | null, mentions?: string[]) => {
         if (!messageText.trim()) return;
-        socket.emit('sendMessage', { room: id, message: messageText, replyTo: replyToId, mentions });
+        socket.emit('sendMessage', {
+            room: id,
+            message: messageText,
+            ...(replyToId ? { replyTo: replyToId } : {}),
+            ...(mentions?.length ? { mentions } : {}),
+        });
         setReplyingTo(null);
     }, [id]);
 
@@ -656,7 +662,12 @@ export default function Room() {
     }, [id]);
 
     const handleSendGif = useCallback((gifUrl: string, gifData: any) => {
-        socket.emit('sendGif', { room: id, gifUrl, replyTo: replyingTo ? String(replyingTo._id || replyingTo.id) : null, gifData });
+        socket.emit('sendGif', {
+            room: id,
+            gifUrl,
+            gifData,
+            ...(replyingTo ? { replyTo: String(replyingTo._id || replyingTo.id) } : {}),
+        });
         setReplyingTo(null);
     }, [id, replyingTo]);
 
@@ -696,7 +707,14 @@ export default function Room() {
     }, []);
 
     const handleSendDMMessage = useCallback((conversationId: string, message: string, receiver: string, messageType?: string, fileData?: any, replyTo?: string) => {
-        socket.emit('sendDMMessage', { conversationId, message, receiver, messageType, fileData, replyTo });
+        socket.emit('sendDMMessage', {
+            conversationId,
+            message,
+            receiver,
+            ...(messageType ? { messageType } : {}),
+            ...(fileData ? { fileData } : {}),
+            ...(replyTo ? { replyTo } : {}),
+        });
     }, []);
 
     const handleDeleteDMConversation = useCallback((conversationId: string) => {
@@ -1065,17 +1083,17 @@ export default function Room() {
                         currentUserGlobalRole={currentUserData?.globalRole}
                         users={users}
                         onDeleteMessage={(messageId) => socket.emit('deleteMessage', { room: id, messageId })}
-                        onReportMessage={(msgId) => socket.emit('reportMessage', { room: id, messageId: msgId, reportedBy: activeUsername })}
+                        onReportMessage={(msgId) => socket.emit('reportMessage', { room: id, messageId: msgId })}
                         onReplyToMessage={setReplyingTo}
                         onEditMessage={(msgId, text) => socket.emit('editMessage', { messageId: msgId, newMessage: text, room: id })}
                         onPinMessage={(msgId) => socket.emit('pinMessage', { room: id, messageId: msgId })}
                         onUnpinMessage={(msgId) => socket.emit('unpinMessage', { room: id, messageId: msgId })}
-                        onKickUser={(u) => socket.emit('kickUser', { room: id, username: u, by: activeUsername })}
-                        onBanUser={(u) => socket.emit('banUser', { room: id, username: u, by: activeUsername })}
+                        onKickUser={(u) => socket.emit('kickUser', { room: id, username: u })}
+                        onBanUser={(u) => socket.emit('banUser', { room: id, username: u })}
                         onPlatformBanUser={(u) => socket.emit('platformBan', { username: u })}
                         onMuteUser={(username) => socket.emit('muteUser', { room: id, username, reason: 'muted from UI' })}
                         onUnmuteUser={(username) => socket.emit('unmuteUser', { room: id, username })}
-                        onPromoteUser={(u, role) => socket.emit('promoteUser', { room: id, username: u, role, by: activeUsername })}
+                        onPromoteUser={(u, role) => socket.emit('promoteUser', { room: id, username: u, role })}
                         pinnedMessages={pinnedMessages}
                         onlineUsers={users.filter(u => u.isActive).map(u => u.name)}
                         unreadMessageId={unreadMessageId}
@@ -1109,7 +1127,11 @@ export default function Room() {
                         onCancelReply={() => setReplyingTo(null)}
                         disabled={!isConnected}
                         users={users.map(u => u.name)}
-                        onTyping={(isTyping) => socket.emit('typing', { room: id, username: activeUsername, isTyping })}
+                        onTyping={(isTyping) => {
+                            if (typeof id === 'string' && id.length > 0) {
+                                socket.emit('typing', { room: id, isTyping: Boolean(isTyping) });
+                            }
+                        }}
                     />
                 </div>
 
