@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileTypeFromBuffer } from 'file-type';
 
-import * as sharp from 'sharp'; // For image validation
+import sharp from 'sharp'; // For image validation
 
 @Injectable()
 export class UploadService {

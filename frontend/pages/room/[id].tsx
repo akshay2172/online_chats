@@ -291,7 +291,7 @@ export default function Room() {
 
             if (msg.sender !== currentU && msg._id) {
                 setTimeout(() => {
-                    socket.emit('markAsRead', { messageId: msg._id, username: currentU, room: id });
+                    socket.emit('markAsRead', { messageId: msg._id, room: id });
                 }, 3000);
             }
         };
@@ -588,7 +588,7 @@ export default function Room() {
     useEffect(() => {
         const handleBeforeUnload = () => {
             if (id && activeUsernameRef.current) {
-                socket.emit('leaveRoom', { room: id, username: activeUsernameRef.current });
+                socket.emit('leaveRoom', { room: id });
             }
         };
 
@@ -608,7 +608,7 @@ export default function Room() {
             window.removeEventListener('viewProfileInSidebar', forceOpenSidebar);
             window.removeEventListener('showToast', (e: any) => addToast(e.detail));
             if (id && activeUsernameRef.current) {
-                socket.emit('leaveRoom', { room: id, username: activeUsernameRef.current });
+                socket.emit('leaveRoom', { room: id });
             }
         };
     }, [id]);
@@ -632,9 +632,9 @@ export default function Room() {
     // Apply activeUsername to all action emitters safely
     const handleSend = useCallback((messageText: string, replyToId?: string | null, mentions?: string[]) => {
         if (!messageText.trim()) return;
-        socket.emit('sendMessage', { room: id, message: messageText, username: activeUsername, replyTo: replyToId, mentions });
+        socket.emit('sendMessage', { room: id, message: messageText, replyTo: replyToId, mentions });
         setReplyingTo(null);
-    }, [id, activeUsername]);
+    }, [id]);
 
     const handleFileUpload = useCallback(async (file: File) => {
         try {
@@ -650,15 +650,15 @@ export default function Room() {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
 
-            socket.emit('uploadFile', { room: id, username: activeUsername, fileData: { filename, originalName, mimetype, size, url: fullUrl } });
+            socket.emit('uploadFile', { room: id, fileData: { filename, originalName, mimetype, size, url: fullUrl } });
             addToast('File uploaded');
         } catch { addToast('Upload failed'); }
-    }, [id, activeUsername]);
+    }, [id]);
 
     const handleSendGif = useCallback((gifUrl: string, gifData: any) => {
-        socket.emit('sendGif', { room: id, gifUrl, username: activeUsername, replyTo: replyingTo ? String(replyingTo._id || replyingTo.id) : null, gifData });
+        socket.emit('sendGif', { room: id, gifUrl, replyTo: replyingTo ? String(replyingTo._id || replyingTo.id) : null, gifData });
         setReplyingTo(null);
-    }, [id, activeUsername, replyingTo]);
+    }, [id, replyingTo]);
 
     const handleVoiceRecord = useCallback(async (audioBlob: Blob) => {
         try {
@@ -674,14 +674,14 @@ export default function Room() {
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
 
-            socket.emit('uploadFile', { room: id, username: activeUsername, fileData: { filename, originalName: 'voice.webm', mimetype: 'audio/webm', size: audioBlob.size, url: fullUrl } });
+            socket.emit('uploadFile', { room: id, fileData: { filename, originalName: 'voice.webm', mimetype: 'audio/webm', size: audioBlob.size, url: fullUrl } });
             addToast('Voice sent');
         } catch { addToast('Voice failed'); }
-    }, [id, activeUsername]);
+    }, [id]);
 
     const handleReact = useCallback((messageId: string | number, emoji: string, action: 'add' | 'remove') => {
-        socket.emit('reactMessage', { room: id, messageId, emoji, username: activeUsername, action });
-    }, [id, activeUsername]);
+        socket.emit('reactMessage', { room: id, messageId: String(messageId), emoji, action });
+    }, [id]);
 
     const handleSearchMessages = useCallback((query: string, filters: SearchFilters) => {
         setIsSearching(true);
@@ -690,14 +690,14 @@ export default function Room() {
 
     // DM Handlers
     const handleStartDM = useCallback((targetUsername: string) => {
-        socket.emit('startDM', { targetUsername, username: activeUsername });
+        socket.emit('startDM', { targetUsername });
         // Open floating card instead of sidebar
         setShowDMCard(true);
-    }, [activeUsername]);
+    }, []);
 
     const handleSendDMMessage = useCallback((conversationId: string, message: string, receiver: string, messageType?: string, fileData?: any, replyTo?: string) => {
-        socket.emit('sendDMMessage', { conversationId, message, receiver, username: activeUsername, messageType, fileData, replyTo });
-    }, [activeUsername]);
+        socket.emit('sendDMMessage', { conversationId, message, receiver, messageType, fileData, replyTo });
+    }, []);
 
     const handleDeleteDMConversation = useCallback((conversationId: string) => {
         socket.emit('deleteDMConversation', { conversationId });
@@ -895,14 +895,14 @@ export default function Room() {
                 currentRoom={id as string}
                 roomCountInfo={roomCountInfo}
                 roomBans={roomBans}
-                onCreateRoom={(data) => socket.emit('createRoom', { ...data, createdBy: activeUsername })}
-                onJoinRoom={(roomId) => socket.emit('joinRoomById', { roomId, username: activeUsername, gender: localQuery?.gender || 'other', country: localQuery?.country || 'Unknown' })}
-                onLeaveRoom={(roomId) => socket.emit('leaveRoom', { room: roomId, username: activeUsername })}
-                onDeleteRoom={(roomId) => socket.emit('deleteRoom', { roomId, username: activeUsername })}
+                onCreateRoom={(data) => socket.emit('createRoom', data)}
+                onJoinRoom={(roomId) => socket.emit('joinRoomById', { roomId, gender: localQuery?.gender || 'other', country: localQuery?.country || 'Unknown' })}
+                onLeaveRoom={(roomId) => socket.emit('leaveRoom', { room: roomId })}
+                onDeleteRoom={(roomId) => socket.emit('deleteRoom', { roomId })}
                 onSwitchRoom={(roomId) => router.push(`/room/${roomId}?username=${activeUsername}&gender=${localQuery?.gender || 'other'}&country=${localQuery?.country || 'Unknown'}`)}
                 onUnbanUser={(room, username) => socket.emit('unbanUser', { room, username })}
                 onGetRoomBans={(room) => socket.emit('getRoomBans', { room })}
-                onUpdateProfile={(updates) => socket.emit('updateProfile', { username: activeUsername, updates })}
+                onUpdateProfile={(updates) => socket.emit('updateProfile', { updates })}
                 onAvatarUpload={handleAvatarUpload}
                 onCoverUpload={handleCoverUpload}
                 pinnedMessages={pinnedMessages}

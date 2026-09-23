@@ -19,8 +19,9 @@ import { UploadService } from '../upload/upload.service';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { RedisService } from '../redis/redis.service';
-import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { UsePipes, UseFilters, ValidationPipe } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
+import { WsExceptionFilter } from './filters/ws-exception.filter';
 import * as Dto from './dto/chat.dto';
 
 @WebSocketGateway({
@@ -31,6 +32,7 @@ import * as Dto from './dto/chat.dto';
   maxHttpBufferSize: 10 * 1024 * 1024 // 10MB for file uploads
 })
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: (errors) => new WsException(errors) }))
+@UseFilters(WsExceptionFilter)
 export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewayConnection {
 
   async afterInit(server: Server) {
@@ -63,8 +65,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
   @WebSocketServer()
   server: Server;
 
-  private readonly RATE_LIMIT_WINDOW = 2000; // 1 minute
-  private readonly RATE_LIMIT_MAX = 2; // 30 messages per minute
+  private readonly RATE_LIMIT_WINDOW = 60000; // 1 minute
+  private readonly RATE_LIMIT_MAX = 30; // 30 messages per minute
 
   async handleConnection(client: AuthenticatedSocket) {
     const username = client.data.user?.username || 'guest';
@@ -325,7 +327,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
 
     } catch (error) {
       SecurityLogger.logError(error, { event: 'joinRoom', user: client.data.user?.username });
-      client.emit('error', { message: error.message });
+      client.emit('error', { message: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
 
@@ -1002,7 +1004,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
     try {
       const authUsername = client.data.user?.username;
 
-      if (!authUsername || authUsername !== data.username) {
+      if (!authUsername) {
         client.emit('error', { message: 'Unauthorized to update this profile.' });
         return;
       }
@@ -2585,7 +2587,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
       });
     } catch (error) {
       SecurityLogger.logError(error, { event: 'uploadAvatar', user: client.data.user?.username });
-      client.emit('error', { message: error.message || 'Failed to upload avatar.' });
+      client.emit('error', { message: error instanceof Error ? error.message : 'Failed to upload avatar.' });
     }
   }
 
@@ -2648,7 +2650,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         }
       }
     } catch (error) {
-      client.emit('error', { message: error.message || 'Failed to send friend request.' });
+      client.emit('error', { message: error instanceof Error ? error.message : 'Failed to send friend request.' });
     }
   }
 
@@ -2690,7 +2692,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         }
       }
     } catch (error) {
-      client.emit('error', { message: error.message || 'Failed to respond to friend request.' });
+      client.emit('error', { message: error instanceof Error ? error.message : 'Failed to respond to friend request.' });
     }
   }
 
@@ -2749,7 +2751,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         client.emit('error', { message: 'Could not remove friend.' });
       }
     } catch (error) {
-      client.emit('error', { message: error.message || 'Failed to remove friend.' });
+      client.emit('error', { message: error instanceof Error ? error.message : 'Failed to remove friend.' });
     }
   }
 
