@@ -29,8 +29,9 @@ export default function InvitePage() {
   
   const acceptInvite = async () => {
     const username = localStorage.getItem('username');
+    const token = localStorage.getItem('accessToken');
     
-    if (!username) {
+    if (!username || !token) {
       router.push(`/?redirect=/invite/${code}`);
       alert('Please log in to accept invite');
       return;
@@ -39,8 +40,12 @@ export default function InvitePage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
     const response = await fetch(`${apiUrl}/api/invites/${code}/use`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + token,
+      },
+      credentials: 'include',
+      body: JSON.stringify({}),
     });
     
     const result = await response.json();

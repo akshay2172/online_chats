@@ -1,6 +1,6 @@
 // backend/utils/security-logger.ts
 import * as winston from 'winston';
-import DailyRotateFile = require('winston-daily-rotate-file');
+import DailyRotateFile from 'winston-daily-rotate-file';
 import * as path from 'path';
 
 export class SecurityLogger {

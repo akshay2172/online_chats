@@ -28,14 +28,24 @@ export default function InviteManager({ roomName, username, userRole }) {
   const createInvite = async () => {
     setIsCreating(true);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const token = localStorage.getItem('accessToken');
+
+    if (!token) {
+      alert('Please log in to create invite links');
+      setIsCreating(false);
+      return;
+    }
     
     try {
       const response = await fetch(`${apiUrl}/api/invites/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+        },
+        credentials: 'include',
         body: JSON.stringify({
           roomName,
-          createdBy: username,
           duration,
           maxUses: maxUses ? parseInt(maxUses) : undefined,
         }),
