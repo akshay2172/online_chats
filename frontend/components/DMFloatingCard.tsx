@@ -99,7 +99,7 @@ const formatTime = (timeString?: string) => {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ';
+const TENOR_API_KEY = process.env.NEXT_PUBLIC_TENOR_API_KEY || '';
 
 export default function DMFloatingCard({
     isOpen, onClose, onMinimize, currentUser, conversations, activeDMConversation,
@@ -262,6 +262,11 @@ export default function DMFloatingCard({
     };
 
     const searchTenorGifs = async (query: string) => {
+        if (!TENOR_API_KEY) {
+            setGifs([]);
+            return;
+        }
+
         setIsLoadingGifs(true);
         try {
             const endpoint = query
