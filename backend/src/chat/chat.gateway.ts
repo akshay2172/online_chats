@@ -219,28 +219,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect, OnGatewa
         return;
       }
 
-      if (!roomDoc && room !== 'general') {
-        client.emit('error', { status: 404, message: 'Room not found' });
-        return;
-      }
-
       // --- 🏠 4. Auto-create room if it doesn't exist ---
       if (!roomDoc) {
-        // Guests cannot create rooms
-        if (isGuest) {
-          client.emit('error', { message: 'Guests cannot create rooms. Please register to create a room.' });
-          return;
-        }
+        if (room === 'general') {
+          // The built-in public room is available to every authenticated identity,
+          // including guests and registered users who are not yet verified.
+          roomDoc = await this.chatService.findOrCreatePublicRoom('general', username);
+        } else {
+          // Guests cannot create custom rooms.
+          if (isGuest) {
+            client.emit('error', { message: 'Guests cannot create rooms. Please register to create a room.' });
+            return;
+          }
 
-        // Registered users must meet eligibility requirements
-        const { allowed, reason } = await this.chatService.canUserCreateRoomWithReason(username);
-        if (!allowed) {
-          client.emit('error', { message: reason ?? 'You are not eligible to create rooms.' });
-          return;
-        }
+          // Registered users must meet eligibility requirements for custom rooms.
+          const { allowed, reason } = await this.chatService.canUserCreateRoomWithReason(username);
+          if (!allowed) {
+            client.emit('error', { message: reason ?? 'You are not eligible to create rooms.' });
+            return;
+          }
 
-        // Create the room â€” user automatically becomes Room Owner via createdBy
-        roomDoc = await this.chatService.findOrCreatePublicRoom(room, username);
+          roomDoc = await this.chatService.findOrCreatePublicRoom(room, username);
+        }
       }
 
       // Re-check after the atomic upsert: a concurrent request may have
